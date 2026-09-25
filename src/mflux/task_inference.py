@@ -1649,6 +1649,8 @@ def _z_image_capabilities(identity: _ModelIdentity) -> ModelCapabilities:
 
 
 def _qwen_capabilities(identity: _ModelIdentity) -> ModelCapabilities:
+    if _is_qwen21(identity.aliases, identity.model_key):
+        return _qwen21_capabilities(identity)
     is_edit_model = _is_qwen_edit(identity.aliases, identity.model_key)
     is_edit_plus_model = _is_qwen_edit_plus(identity.aliases, identity.model_key)
     i2i_canvas = _ordinary_i2i_canvas_contract()
@@ -1824,6 +1826,45 @@ def _qwen_capabilities(identity: _ModelIdentity) -> ModelCapabilities:
         label=_qwen_label(identity),
         model_name=identity.model_name,
         capabilities=capabilities,
+    )
+
+
+def _qwen21_capabilities(identity: _ModelIdentity) -> ModelCapabilities:
+    """Qwen-Image-2.1's own contract.
+
+    A separate single-stream block-causal transformer with a Qwen3-VL text encoder and a 4-channel
+    causal VAE, so it shares nothing with the original Qwen Image rows: no ControlNet, no edit
+    sidecars, no outpaint/reframe. Latent image-to-image is reachable through the same
+    `qwen21.generate` handler, which is what the ported variant implements.
+    """
+    return ModelCapabilities(
+        schema_version=CAPABILITIES_SCHEMA_VERSION,
+        family=identity.family,
+        label="Qwen Image 2.1",
+        model_name=identity.model_name,
+        capabilities=(
+            GenerationCapability(
+                id="qwen21.text",
+                public_task=TEXT_TO_IMAGE,
+                mode=MODE_TEXT_ONLY,
+                handler_id="qwen21.generate",
+                default_for_task=True,
+                **_lora_capability_kwargs(identity=identity, capability_id="qwen21.text", supports_lora=False),
+            ),
+            GenerationCapability(
+                id="qwen21.latent",
+                public_task=IMAGE_TO_IMAGE,
+                mode=MODE_LATENT_IMG2IMG,
+                handler_id="qwen21.generate",
+                min_images=1,
+                max_images=1,
+                supports_image_strength=True,
+                default_for_task=True,
+                resize_modes=RESIZE_MODE_CHOICES,
+                **_lora_capability_kwargs(identity=identity, capability_id="qwen21.latent", supports_lora=False),
+                **_ordinary_i2i_canvas_contract(),
+            ),
+        ),
     )
 
 
@@ -2567,6 +2608,21 @@ def _is_qwen(aliases: set[str], model_key: str) -> bool:
             "qwen-image-edit-2511",
         )
         or "qwen" in model_key
+    )
+
+
+def _is_qwen21(aliases: set[str], model_key: str) -> bool:
+    """Whether the handle names Qwen-Image-2.1 rather than the original Qwen Image line.
+
+    Checked before `_is_qwen` everywhere it matters: "qwen-image-2.1" contains "qwen", so the
+    broad matcher would otherwise hand this single-stream block-causal model the original
+    Qwen Image contract (a different transformer, text encoder and VAE).
+    """
+    return (
+        _has_alias(aliases, "qwen-image-2.1", "qwen-2.1", "qwen-image-21")
+        or "qwen-image-2.1" in model_key
+        or "qwen-2.1" in model_key
+        or "qwen-image-21" in model_key
     )
 
 

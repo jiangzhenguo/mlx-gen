@@ -19,7 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [`8c00dab25`](https://github.com/mflux-community/mflux/commit/8c00dab25)
   ("feat: Qwen-Image-2.1 support (txt2img, img2img, quantization)", #736) under its MIT license;
   the text encoder is deliberately never quantized (upstream notes significant semantic
-  degradation).
+  degradation). Routable as `mlxgen generate --model qwen-image-2.1` (aliases `qwen-2.1`,
+  `qwen-image-21`) with a `qwen21.text` text-to-image row and a `qwen21.latent` latent
+  image-to-image row; the default step count is 40. Verified end to end against
+  `JoyFusionAI/Qwen-Image-2.1-MLX-8bit` (a 22 GB MLX-native 8-bit export of this same upstream
+  commit), which loads in ~2 s and renders a 320x512 40-step image in ~20 s.
 
 ### Changed
 
@@ -27,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `image_path` positional ahead of it; keeping it required would have rejected the upstream Qwen-Image-2.1
   call site. Existing callers pass it explicitly and are unaffected, and the latent-image-to-image
   validation that requires a positive strength is unchanged.
+- **The ported Qwen-Image-2.1 CLI carries two adaptations for MLX-Gen's parser.** Upstream's
+  `add_model_arguments(default_model=...)` hook and `ConfigResolution.resolve_restricted` do not
+  exist here: the omitted-`--model` default is applied through `default_inference_steps`, and the
+  config resolves through `ModelConfig.from_name`. Behaviour is otherwise unchanged.
 
 ## [0.38.0] - 2026-09-21
 
