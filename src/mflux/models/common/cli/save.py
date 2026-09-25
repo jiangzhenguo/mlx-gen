@@ -8,6 +8,7 @@ from mflux.models.flux.variants.txt2img.flux import Flux1
 from mflux.models.flux2.variants.txt2img.flux2_klein import Flux2Klein
 from mflux.models.qwen.variants.edit.qwen_image_edit import QwenImageEdit
 from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage
+from mflux.models.qwen21.variants.txt2img.qwen_image_21 import QwenImage21
 from mflux.models.seedvr2 import SeedVR2
 from mflux.models.wan import Wan2_2_TI2V
 from mflux.models.z_image import ZImage, ZImageTurbo
@@ -30,6 +31,10 @@ def _model_class_for_config(model_config: ModelConfig):
 
     if has("bonsai"):
         return None
+    # 2.1 must be matched before the broad `qwen` token: "qwen-image-2.1" contains
+    # "qwen", so the catch-all below would otherwise select the legacy QwenImage backend.
+    if has("qwen-image-2.1") or has("qwen-2.1") or has("qwen-image-21"):
+        return QwenImage21
     if has("qwen-image-edit") or has("qwen-edit"):
         return QwenImageEdit
     if has("qwen"):

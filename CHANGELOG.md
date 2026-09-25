@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Qwen-Image-2.1 text-to-image (`qwen-image-2.1`).** A second-generation Qwen Image route: a
+  single-stream block-causal 7.1B transformer (SwiGLU MLP, one global `modulation` pair instead of
+  per-block image/text modulation branches, `axes_dims_rope [16, 56, 56]`) paired with a 4-channel
+  causal VAE and a Qwen3-VL text encoder. Text tokens are conditioned at `t = 0`
+  (`causal_condition`), which is what makes their activations independent of the denoising step.
+  The recommended sampling defaults are 40 steps and no guidance. Ported from
+  [mflux-community/mflux](https://github.com/mflux-community/mflux) commit
+  [`8c00dab25`](https://github.com/mflux-community/mflux/commit/8c00dab25)
+  ("feat: Qwen-Image-2.1 support (txt2img, img2img, quantization)", #736) under its MIT license;
+  the text encoder is deliberately never quantized (upstream notes significant semantic
+  degradation).
+
+### Changed
+
+- **`Img2Img.image_strength` is now optional.** Upstream dropped the argument when it made
+  `image_path` positional ahead of it; keeping it required would have rejected the upstream Qwen-Image-2.1
+  call site. Existing callers pass it explicitly and are unaffected, and the latent-image-to-image
+  validation that requires a positive strength is unchanged.
+
 ## [0.38.0] - 2026-09-21
 
 MLX 0.32.x is now supported: `mlx>=0.27.0,<0.33.0` on darwin and `mlx[cuda13]>=0.30.3,<0.33.0` on

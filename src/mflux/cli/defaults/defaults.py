@@ -47,6 +47,7 @@ MODEL_CHOICES = [
     "flux2-klein-9b",
     "flux2-klein-base-4b",
     "flux2-klein-base-9b",
+    "qwen-image-2.1",
 ]
 QUANTIZE_CHOICES = [3, 5, 4, 6, 8]
 

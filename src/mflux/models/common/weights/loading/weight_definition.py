@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from mflux.models.fibo_vlm.weights.fibo_vlm_weight_definition import FIBOVLMWeightDefinition
     from mflux.models.flux.weights.flux_weight_definition import FluxWeightDefinition
     from mflux.models.qwen.weights.qwen_weight_definition import QwenWeightDefinition
+    from mflux.models.qwen21.weights.qwen21_weight_definition import Qwen21WeightDefinition
     from mflux.models.seedvr2.weights.seedvr2_weight_definition import SeedVR2WeightDefinition
     from mflux.models.wan.weights.wan_weight_definition import WanWeightDefinition
     from mflux.models.z_image.weights.z_image_weight_definition import ZImageWeightDefinition
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
         | FIBOWeightDefinition
         | FIBOVLMWeightDefinition
         | QwenWeightDefinition
+        | Qwen21WeightDefinition
         | ZImageWeightDefinition
         | WanWeightDefinition
         | SeedVR2WeightDefinition
