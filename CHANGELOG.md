@@ -25,7 +25,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `JoyFusionAI/Qwen-Image-2.1-MLX-8bit` (a 22 GB MLX-native 8-bit export of this same upstream
   commit), which loads in ~2 s and renders a 320x512 40-step image in ~20 s.
 
+- **Qwen-Image-2.1 reference editing (`qwen21.edit`).** The second upstream half of the
+  2.1 route: instruction-driven single/multi-reference editing (up to 10 reference images), RGBA
+  output, and prefix KV caching for the static text/reference context. Ported from
+  [mflux-community/mflux](https://github.com/mflux-community/mflux) commit
+  [`acdfc98ba`](https://github.com/mflux-community/mflux/commit/acdfc98ba)
+  ("feat: add Qwen 2.1 reference editing, RGBA output and prefix caching", #741). The earlier
+  txt2img port pinned `8c00dab25`, which predates #741, so the edit half was **absent rather than
+  dropped**. Upstream ships it as a parallel implementation under `qwen21/reference/` rather than
+  an extension of the txt2img model: the multi-image prefix cache, the RGBA VAE path and the
+  Qwen3-VL vision changes do not fit the single-image flow. Routable as
+  `mlxgen generate --model qwen-image-2.1 --image-paths ...` with a `qwen21.edit` capability row
+  (`min_images=1`, `max_images=10`), plus `--image-paths`, `--output-resolution` (pixel-area
+  budget, default 1024) and `--use-kv-cache` / `--no-use-kv-cache`. Verified end to end against
+  `Qwen/Qwen-Image-2.1` (33.13 GB, bf16): loads in 8.2 s at `-q 8`, generates a 12-step
+  672x384 single-reference edit in 16.3 s, and produces native RGBA output (512x512 sticker with
+  60% of pixels transparent). Integrity was checked against the source manifest — all 29 files
+  byte-exact, `transformer` 297 tensors and `text_encoder` 750 (the upstream 748 plus
+  `lm_head.weight` and `rotary_emb.inv_freq`, both of which this route drops).
+  **Checkpoint requirement worth stating up front**: the editing path encodes reference images
+  through the Qwen3-VL vision tower, so the checkpoint must ship it. Weight-only exports written
+  for text-to-image do not — the widely mirrored `JoyFusionAI/Qwen-Image-2.1-MLX-8bit` and
+  `ddalcu/Qwen-Image-2.1-MLX-Serve-8bit` both carry zero `visual.*` keys (their 8-bit text
+  encoders are 399 and 902 language-only tensors), because they predate #741. Use the official
+  checkpoint or an export produced by `QwenImage21Edit.save_model`;
+  `mlxgen save --model qwen-image-2.1` exports the text-only implementation and omits the tower.
+  Verified also by the ported unit and parity suites (35 passing, 2 known float32 parity cases
+  tracked in the test) and by a full audit that every ported file matches upstream `acdfc98ba`,
+  apart from the two deliberate adaptations listed under Changed.
+
 ### Changed
+
+- **The parser and weight-loading APIs the 2.1 edit route needs were added, not worked around.**
+  Upstream's edit CLI depends on four capabilities MLX-Gen lacked, so they are now first-class
+  APIs:
+  `CommandLineParser.add_image_paths_arguments()` (with `require_image_paths`, enforced post-parse
+  so a `--config-from-metadata` sidecar can still supply the paths),
+  `CommandLineParser.warn_ignored_options()`,
+  `add_model_arguments(default_model=...)` (consulted only as the `--steps` fallback, so
+  `--base-model` keeps its promotion), and `ConfigResolution.resolve_restricted()` /
+  `infer_family_member()` for CLIs hard-wired to one registry entry.
+- **`ComponentDefinition` gained `key_transform` and `weight_transform`, and `WeightLoader` gained
+  `load_single_local()`.** Upstream checkpoints whose raw keys do not match the module tree
+  one-to-one (2.1's text encoder drops `lm_head.*` and transposes `patch_embed.proj.weight`) are
+  now expressible; `key_transform` may drop a key by returning `None`. `load_single_local()` reads
+  one component straight out of an already-resolved root, so the 2.1 initializer can load and
+  quantize one component at a time instead of holding every dense weight at once.
+- **Abbreviated long options are now rejected (`allow_abbrev=False`).** Option provision is
+  detected by scanning argv (`_option_was_provided`), which cannot see argparse's prefix matching,
+  so `--no-use-kv` read as "the user did not pass `--no-use-kv-cache`" and let a metadata sidecar
+  overwrite an explicitly passed flag.
+- **`Qwen3VLDecoder` splices image embeddings positionally instead of via a cumsum mask.** The
+  vectorised version derived each image row's index from `cumsum(mask) - 1`, which drifts once the
+  mask is bfloat16-valued; the ported implementation walks the flattened positions in order.
+- **`mflux.utils.exif_orientation` is new.** `open_oriented()` applies a file's EXIF Orientation
+  tag before the image reaches the model, so reference-image pixels and dimensions agree. Ported
+  from upstream; the 2.1 edit route is its first consumer (the repo previously had no EXIF
+  handling at all).
+
+### Fixed
+
+- **The Qwen-Image-2.1 edit CLI emits `--json-events` progress like every other route.** Upstream's
+  CLI predates MLX-Gen's event stream, so a long edit (40 steps by default) emitted nothing and
+  `--json-events` was silently ignored on this route.
 
 - **`Img2Img.image_strength` is now optional.** Upstream dropped the argument when it made
   `image_path` positional ahead of it; keeping it required would have rejected the upstream Qwen-Image-2.1

@@ -66,6 +66,83 @@ class ConfigResolution:
         raise ValueError(f"No rule matched for model_name: {model_name}")
 
     @staticmethod
+    def resolve_restricted(
+        model_name: str | None,
+        registry_key: str,
+        model_path: str | None = None,
+        extra_keys: tuple[str, ...] = (),
+        base_model: str | None = None,
+    ) -> "ModelConfig":
+        # Resolve --model for a CLI hard-wired to one registry model or a closed family of them:
+        # `registry_key` is the entry an omitted --model runs; `extra_keys` are siblings this CLI
+        # can equally serve. A builtin name must alias one of these — anything else errors instead
+        # of silently loading a foreign config. Custom checkpoints (model_path set) load their
+        # weights from the path and take their geometry from the family: an explicit base_model
+        # selects the entry (naming anything outside the family is an error); without it the
+        # checkpoint's NAME is searched for a family alias, so a third-party export still runs as
+        # the family member it actually is rather than dying on the default entry's shapes. Only
+        # the family is searched, so an unrelated name keeps the default entry.
+        from mflux.models.common.config.model_config import AVAILABLE_MODELS
+        from mflux.utils.exceptions import ModelConfigError
+
+        allowed = [AVAILABLE_MODELS[registry_key]] + [AVAILABLE_MODELS[key] for key in extra_keys]
+        expected = allowed[0]
+        if model_name is None or model_path is not None:
+            if base_model is not None:
+                root = next(
+                    (config for config in allowed if base_model == config.model_name or base_model in config.aliases),
+                    None,
+                )
+                if root is None:
+                    aliases = [alias for config in allowed for alias in config.aliases]
+                    raise ModelConfigError(
+                        f"'{base_model}' is not {expected.model_name}; this CLI only accepts the aliases {aliases}."
+                    )
+                return root
+            if model_path is not None:
+                inferred = ConfigResolution.infer_family_member(model_path, registry_key, extra_keys)
+                if inferred is not None:
+                    return inferred
+            return expected
+        resolved = ConfigResolution.resolve(model_name=model_name)
+        if all(resolved is not config for config in allowed):
+            aliases = [alias for config in allowed for alias in config.aliases]
+            raise ModelConfigError(
+                f"'{model_name}' is not {expected.model_name}; this CLI only accepts the aliases {aliases}."
+            )
+        return resolved
+
+    @staticmethod
+    def infer_family_member(
+        model_path: str, registry_key: str, extra_keys: tuple[str, ...] = ()
+    ) -> "ModelConfig | None":
+        # The entry a custom checkpoint's name selects within a restricted CLI's family, or None
+        # when the name carries no family alias. An exact repo id wins outright; otherwise only
+        # the checkpoint's BASENAME is searched: the basename is the only path segment that names
+        # the checkpoint, and a parent directory that happens to name a sibling
+        # (/Volumes/qwen-2.1-experiments/my-finetune) must not reshape it.
+        from mflux.models.common.config.model_config import AVAILABLE_MODELS
+
+        allowed = [AVAILABLE_MODELS[registry_key]] + [AVAILABLE_MODELS[key] for key in extra_keys]
+        exact = next((config for config in allowed if model_path == config.model_name), None)
+        if exact is not None:
+            return exact
+        basename = model_path.rstrip("/").rsplit("/", 1)[-1]
+        return ConfigResolution._infer_from_name(basename, allowed)
+
+    @staticmethod
+    def _infer_from_name(name: str, candidates: list["ModelConfig"]) -> "ModelConfig | None":
+        # The longest matching alias wins (a "qwen-image-2.1" name is not claimed by "qwen-image"),
+        # then registry priority. None when no alias appears in the name.
+        lowered = name.lower()
+        matches = [
+            (config, alias) for config in candidates for alias in config.aliases if alias and alias.lower() in lowered
+        ]
+        if not matches:
+            return None
+        return sorted(matches, key=lambda match: (-len(match[1]), match[0].priority))[0][0]
+
+    @staticmethod
     def _check(check: str, ctx: dict) -> bool:
         if check == "is_exact_match":
             model_name = ctx["model_name"]

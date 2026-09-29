@@ -50,6 +50,8 @@ nav:
       - Masked Editing: masked-editing.md
       - Qwen Localized Editing: qwen-localized-editing.md
       - Qwen Route Matrix: qwen-route-matrix.md
+      - Qwen-Image-2.1 Guide: qwen-image-21.md
+      - Qwen-Image-2.1 Editing: qwen-image-21-editing.md
       - Reframe & Outpaint: reframe-outpaint.md
       - Wan Video: wan-video.md
       - MiniMax-H3 Video With Audio: minimax-h3.md

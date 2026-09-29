@@ -1270,6 +1270,8 @@ def _route_for_plan(
         return _qwen_route(control_model=control_model)
     if handler_id == "qwen21.generate":
         return _qwen21_route()
+    if handler_id == "qwen21.edit":
+        return _qwen21_edit_route()
     if handler_id == "qwen.edit":
         return _qwen_edit_route(model_override=model_override)
     if handler_id == "flux2.generate":
@@ -1404,6 +1406,18 @@ def _qwen21_route() -> _Route:
         "--image-path",
         None,
         requires_image=False,
+    )
+
+
+def _qwen21_edit_route() -> _Route:
+    from mflux.models.qwen21.cli.qwen21_edit_generate import main as target_main
+
+    return _Route(
+        "mflux-generate-qwen-2.1-edit",
+        target_main,
+        "--image-paths",
+        None,
+        requires_image=True,
     )
 
 

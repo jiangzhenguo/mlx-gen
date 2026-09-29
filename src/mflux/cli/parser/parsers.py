@@ -2,6 +2,7 @@ import argparse
 import json
 import sys
 import typing as t
+import warnings
 from pathlib import Path
 
 from mflux.cli.defaults import defaults as ui_defaults
@@ -140,9 +141,15 @@ def _model_config_for_parser(model_name: str | None, base_model: str | None = No
         return None
 
 
-def _model_step_default(model_name: str | None, base_model: str | None = None) -> int:
-    model_config = _model_config_for_parser(model_name, base_model=base_model)
-    return default_inference_steps(model_config, model_name=model_name, base_model=base_model)
+def _model_step_default(model_name: str | None, base_model: str | None = None, fallback_model: str | None = None) -> int:
+    # `fallback_model` is the entry a single-model CLI runs when --model is omitted. It is only
+    # consulted when --model named nothing, so --base-model keeps its promotion (a
+    # `--base-model qwen-image-2.1` with no --model still resolves through base_model first)
+    # and a custom checkpoint with no recognisable name gets the count of the entry the CLI
+    # actually runs it on.
+    effective_model = model_name if model_name is not None else fallback_model
+    model_config = _model_config_for_parser(effective_model, base_model=base_model)
+    return default_inference_steps(model_config, model_name=effective_model, base_model=base_model)
 
 
 def _is_predefined_model_name(model_name: str | None, base_model: str | None = None) -> bool:
@@ -165,6 +172,13 @@ def _looks_like_local_path(model_name: str) -> bool:
 class CommandLineParser(argparse.ArgumentParser):
 
     def __init__(self, *args, **kwargs):
+        # Abbreviated long options (argparse's prefix matching) are rejected: option
+        # provision is detected by scanning argv (_option_was_provided), which cannot see
+        # abbreviations, so `--no-use-kv` would read as "the user did not pass
+        # --no-use-kv-cache" and let a metadata sidecar overwrite an explicit flag. An
+        # abbreviation that is unambiguous today also breaks the moment a new option
+        # shares its prefix.
+        kwargs.setdefault("allow_abbrev", False)
         super().__init__(*args, **kwargs)
         self.supports_metadata_config = False
         self.supports_image_generation = False
@@ -176,6 +190,15 @@ class CommandLineParser(argparse.ArgumentParser):
         self.supports_outpaint_passes = False
         self.supports_lora = False
         self.require_model_arg = True
+        # The model this CLI runs when --model is omitted. Only read to resolve defaults that
+        # depend on the model (--steps); deliberately NOT written to namespace.model, which
+        # stays None so the metadata-config restore and the model_path computation below keep
+        # their "user named nothing" signal.
+        self.default_model: str | None = None
+        # Reference-edit CLIs accept images the argparse-level `required=` cannot see (a
+        # --config-from-metadata sidecar may carry them), so the requirement is enforced
+        # after parsing instead.
+        self.require_image_paths = False
 
     def error(self, message) -> t.NoReturn:
         if "--json-events" in sys.argv[1:]:
@@ -269,8 +292,13 @@ class CommandLineParser(argparse.ArgumentParser):
             ),
         )
 
-    def add_model_arguments(self, path_type: t.Literal["load", "save"] = "load", require_model_arg: bool = True) -> None:
+    def add_model_arguments(self, path_type: t.Literal["load", "save"] = "load", require_model_arg: bool = True, default_model: str | None = None) -> None:
+        # `default_model` is the model this CLI runs when --model is omitted. It is only
+        # read to resolve defaults that depend on the model (--steps); it is deliberately
+        # NOT substituted for namespace.model, which stays None so the metadata-config
+        # restore keeps its "user named nothing" signal.
         self.require_model_arg = require_model_arg
+        self.default_model = default_model
         self.add_argument("--model", "-m", type=str, required=require_model_arg, action=ModelSpecAction, help=f"The model to use ({' or '.join(ui_defaults.MODEL_CHOICES)}, a HuggingFace repo org/model, or a local path).")
         if path_type == "save":
             self.add_argument("--path", type=str, required=True, help="Local path for saving a model to disk.")
@@ -297,6 +325,13 @@ class CommandLineParser(argparse.ArgumentParser):
         self.add_argument("--steps", type=int, default=None, help="Inference Steps")
         self.add_argument("--guidance", type=float, default=None, help=f"Guidance Scale (Default varies by tool: {ui_defaults.GUIDANCE_SCALE} for most, {ui_defaults.DEFAULT_DEV_FILL_GUIDANCE} for fill tools, {ui_defaults.DEFAULT_DEPTH_GUIDANCE} for depth)")
         self.add_argument("--canvas-policy", choices=CANVAS_POLICY_CHOICES, default=CANVAS_POLICY_SOURCE_ASPECT, help="For ordinary image-to-image, resolve the output canvas from the source aspect ratio by default. Use exact-resize only when intentionally resizing/recomposing the source into the exact requested width and height.")
+
+    def add_image_paths_arguments(self, required: bool = True) -> None:
+        # The requirement is enforced after parsing (see parse_args) rather than by argparse:
+        # argparse checks required= before parse_args reaches the metadata block, so an edit
+        # CLI exited 2 on images a --config-from-metadata sidecar was carrying.
+        self.require_image_paths = required
+        self.add_argument("--image-paths", type=Path, nargs="+", default=None, help="Local paths to one or more reference images. For single image editing, provide one path. For multiple image editing, provide multiple paths.")
 
     def add_resize_mode_argument(self) -> None:
         # Deliberately NOT in the common image-generator group: routes whose source/mask
@@ -511,6 +546,16 @@ class CommandLineParser(argparse.ArgumentParser):
         self.add_argument("image_path", type=str, help="Path to the image file to inspect")
 
     @staticmethod
+    def warn_ignored_options(options_reasons: dict[str, str]) -> None:
+        # One policy for options a model cannot honour: keep accepting them so existing
+        # scripts do not break, but never drop them silently. Families that must
+        # hard-error on a contradictory VALUE keep doing that themselves; this covers
+        # the option-is-a-no-op case.
+        for option, reason in options_reasons.items():
+            if CommandLineParser._option_was_provided(option):
+                warnings.warn(f"{option} is ignored; {reason}", stacklevel=2)
+
+    @staticmethod
     def _option_was_provided(*option_names: str) -> bool:
         argv = sys.argv[1:]
         for token in argv:
@@ -615,6 +660,18 @@ class CommandLineParser(argparse.ArgumentParser):
                     and getattr(namespace, canvas_field) == self.get_default(canvas_field)
                 ):
                     setattr(namespace, canvas_field, value_from_metadata)
+
+            # Reference-edit replay (Qwen-Image-2.1): metadata records the pixel-area budget
+            # and whether the prefix KV cache was reused, so a -C replay reproduces the same
+            # output instead of silently falling back to the defaults. Explicit args still win.
+            for parameter in ("use_kv_cache", "output_resolution"):
+                option = parameter.replace("_", "-")
+                if (
+                    hasattr(namespace, parameter)
+                    and parameter in prior_gen_metadata
+                    and not self._option_was_provided(f"--{option}", f"--no-{option}")
+                ):
+                    setattr(namespace, parameter, prior_gen_metadata[parameter])
 
             if self.supports_controlnet:
                 if namespace.controlnet_image_path is None:
@@ -743,6 +800,9 @@ class CommandLineParser(argparse.ArgumentParser):
             if getattr(self, 'require_prompt', True):
                 self.error("Either --prompt or --prompt-file argument is required, or 'prompt' required in metadata config file")
 
+        if self.require_image_paths and not getattr(namespace, "image_paths", None):
+            self.error("At least one --image-paths value is required, or 'image_paths' required in metadata config file")
+
         if (
             self.supports_image_to_image
             and getattr(namespace, "image_strength", None) is not None
@@ -756,7 +816,11 @@ class CommandLineParser(argparse.ArgumentParser):
             and getattr(namespace, "steps", None) is None
         ):
             model_name = getattr(namespace, "model", None)
-            namespace.steps = _model_step_default(model_name, getattr(namespace, "base_model", None))
+            namespace.steps = _model_step_default(
+                model_name,
+                getattr(namespace, "base_model", None),
+                fallback_model=getattr(self, "default_model", None),
+            )
         if self.supports_image_generation and getattr(namespace, "steps", None) is not None and namespace.steps < 1:
             self.error("--steps must be greater than zero.")
 

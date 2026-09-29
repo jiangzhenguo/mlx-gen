@@ -49,6 +49,12 @@ class ComponentDefinition:
     download_url: str | None = None
     weight_prefix_filters: List[str] | None = None
     weight_files: List[str] | None = None  # Specific files to load (if None, loads all *.safetensors)
+    # Raw-key rewriting for components whose checkpoint keys do not match the module tree
+    # one-to-one: key_transform renames or DROPS a key (None), weight_transform reshapes the
+    # value that survives. Applied before precision conversion and before mapping_getter, so
+    # passthrough-style components can own their whole translation.
+    key_transform: Callable[[str], str | None] | None = None
+    weight_transform: Callable[[str, mx.array], mx.array] | None = None
 
 
 @dataclass

@@ -36,6 +36,9 @@ mlxgen validation --model AbstractFramework/qwen-image-edit-2511-8bit
 | `qwen.outpaint` | MLX-Gen canvas expansion on the Qwen edit route | original/2509/2511 edit families and prepared variants | `--image + --outpaint-padding + --prompt` | [Reframe and outpaint](reframe-outpaint.md) links the accepted Qwen outpaint matrices, and [LoRA](lora.md) covers the exact 2511 q8 multi-angle proof row. |
 | `qwen.control` | `QwenImageControlNetPipeline` | current exact public row: `AbstractFramework/qwen-image-8bit` | `--controlnet-image-path + --prompt` | [Qwen localized editing](qwen-localized-editing.md) links the accepted structured-control proof. |
 | `qwen.control-inpaint` | `QwenImageControlNetInpaintPipeline` | current exact public row: `AbstractFramework/qwen-image-8bit` | `--image + --mask-path + --prompt` | [Qwen localized editing](qwen-localized-editing.md) links the accepted control-inpaint proof. |
+| `qwen21.text` | `QwenImage21Pipeline` | `Qwen/Qwen-Image-2.1` and its aliases (`qwen-2.1`, `qwen-image-21`), prepared q8 exports | `--prompt` | Route is shipped; 40 steps and no guidance by default. |
+| `qwen21.latent` | `QwenImage21Pipeline` (img2img) | same 2.1 handles | `--image-path + --image-strength + --prompt` | Route is shipped. Strength-based latent img2img, not instruction editing: the edit half is `qwen21.edit`. |
+| `qwen21.edit` | `QwenImage21EditPipeline` | same 2.1 handles | repeated `--image-paths + --prompt`, `--output-resolution`, `--use-kv-cache` | Route is shipped from upstream `acdfc98ba` (#741). RGBA output (use PNG/WebP/TIFF); up to 10 reference images. Not yet in the validated proof matrices. |
 
 ## Important Public-Boundary Choices
 
@@ -62,6 +65,8 @@ That keeps the user-facing contract smaller while preserving honest route identi
 | Need | Route |
 | --- | --- |
 | Generate from text only | `qwen.text` |
+| Generate from text only on the second-generation 2.1 stack | `qwen21.text` |
+| Edit reference images with an instruction on 2.1 (up to 10 refs, RGBA out) | `qwen21.edit` |
 | Restyle one existing image with explicit `--image-strength` | `qwen.latent` |
 | Edit one source image with an instruction | `qwen.edit` |
 | Edit only a masked part of one source image on the edit checkpoint | `qwen.inpaint` |

@@ -31,6 +31,19 @@ logger = logging.getLogger(__name__)
 
 class WeightLoader:
     @staticmethod
+    def load_single_local(
+        component: ComponentDefinition,
+        root_path: Path,
+    ) -> LoadedWeights:
+        # The caller has already resolved a local root, so no snapshot_download and no
+        # allow_patterns filtering: read the component straight out of that directory.
+        weights, q_level, version = WeightLoader._load_component(root_path, component)
+        return LoadedWeights(
+            components={component.name: weights},
+            meta_data=MetaData(quantization_level=q_level, mflux_version=version),
+        )
+
+    @staticmethod
     def load_single(
         component: ComponentDefinition,
         repo_id: str,
@@ -135,6 +148,20 @@ class WeightLoader:
                 for k, v in raw_weights.items()
                 if any(k.startswith(prefix) for prefix in component.weight_prefix_filters)
             }
+
+        # Raw-key rewriting for checkpoints whose keys do not match the module tree one-to-one.
+        # key_transform may DROP a key by returning None; weight_transform then rescales what
+        # survived. Both run before precision conversion and before any mapping_getter.
+        if component.key_transform is not None:
+            transformed_weights = {}
+            for key, value in raw_weights.items():
+                transformed_key = component.key_transform(key)
+                if transformed_key is not None:
+                    transformed_weights[transformed_key] = value
+            raw_weights = transformed_weights
+
+        if component.weight_transform is not None:
+            raw_weights = {k: component.weight_transform(k, v) for k, v in raw_weights.items()}
 
         # Apply precision conversion if specified
         if component.precision is not None:

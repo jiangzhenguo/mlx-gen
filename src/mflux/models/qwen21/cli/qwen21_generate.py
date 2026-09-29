@@ -1,5 +1,6 @@
 from mflux.callbacks.callback_manager import CallbackManager
 from mflux.cli.parser.parsers import CommandLineParser
+from mflux.cli.runtime_events import CliRuntimeEventStream, cli_print
 from mflux.models.common.config.inference_defaults import default_inference_steps
 from mflux.models.common.config.model_config import ModelConfig
 from mflux.models.qwen21.latent_creator.qwen21_latent_creator import Qwen21LatentCreator
@@ -53,24 +54,45 @@ def main():
         steps = args.steps if args.steps is not None else default_inference_steps(model_config, fallback=40)
 
         for seed in args.seed:
-            image = qwen.generate_image(
+            # 进度事件流(--json-events):与 z-image/flux2 等路由同构,消费者(App / 脚本)
+            # 依赖 stdout 的 JSONL 渲染实时进度条。缺这段则 --json-events 被静默忽略,
+            # 长任务(2.1 默认 40 步)全程无任何进度输出。
+            events = CliRuntimeEventStream(
+                enabled=bool(args.json_events),
+                command="mlxgen generate",
+                model=model_config.model_name,
                 seed=seed,
-                prompt=PromptUtil.read_prompt(args),
-                negative_prompt=PromptUtil.read_negative_prompt(args),
-                width=width,
-                height=height,
-                guidance=args.guidance if args.guidance is not None else 1.0,
-                scheduler=args.scheduler,
-                image_path=args.image_path,
-                num_inference_steps=steps,
-                image_strength=args.image_strength,
             )
-            image.save(path=args.output.format(seed=seed), export_json_metadata=args.metadata)
+            output_path = args.output.format(seed=seed)
+            events.set_output_path(output_path)
+            unsubscribe = events.subscribe_model(qwen, map_complete_to_generated=True)
+            try:
+                image = qwen.generate_image(
+                    seed=seed,
+                    prompt=PromptUtil.read_prompt(args),
+                    negative_prompt=PromptUtil.read_negative_prompt(args),
+                    width=width,
+                    height=height,
+                    guidance=args.guidance if args.guidance is not None else 1.0,
+                    scheduler=args.scheduler,
+                    image_path=args.image_path,
+                    num_inference_steps=steps,
+                    image_strength=args.image_strength,
+                )
+                events.emit_save()
+                image.save(path=output_path, export_json_metadata=args.metadata)
+                events.emit_complete()
+            except Exception as exc:
+                events.emit_failed(error=exc)
+                raise
+            finally:
+                if unsubscribe is not None:
+                    unsubscribe()
     except (StopImageGenerationException, PromptFileReadError) as exc:
-        print(exc)
+        cli_print(str(exc), json_events=bool(args.json_events))
     finally:
         if memory_saver:
-            print(memory_saver.memory_stats())
+            cli_print(memory_saver.memory_stats(), json_events=bool(args.json_events))
 
 
 if __name__ == "__main__":

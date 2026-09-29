@@ -22,6 +22,10 @@ class CompletionGenerator:
             "mflux-generate-redux",
             "mflux-generate-qwen",
             "mflux-generate-qwen-edit",
+            "mflux-generate-qwen-2.1",
+            "mlxgen-generate-qwen-2.1",
+            "mflux-generate-qwen-2.1-edit",
+            "mlxgen-generate-qwen-2.1-edit",
             "mflux-generate-fibo",
             "mflux-generate-fibo-edit",
             "mflux-generate-z-image",
@@ -184,6 +188,35 @@ class CompletionGenerator:
             )
             parser.add_controlnet_arguments()
             parser.add_output_arguments()
+
+        elif command == "mflux-generate-qwen-2.1" or command == "mlxgen-generate-qwen-2.1":
+            parser.add_general_arguments()
+            parser.add_model_arguments(require_model_arg=False, default_model="qwen-image-2.1")
+            parser.add_image_generator_arguments(supports_metadata_config=True, supports_dimension_scale_factor=True)
+            parser.add_image_to_image_arguments(required=False)
+            parser.add_output_arguments()
+
+        elif command in (
+            "mflux-generate-qwen-2.1-edit",
+            "mlxgen-generate-qwen-2.1-edit",
+        ):
+            parser.add_general_arguments()
+            parser.add_model_arguments(require_model_arg=False, default_model="qwen-image-2.1")
+            parser.add_image_generator_arguments(supports_metadata_config=True, supports_dimension_scale_factor=True)
+            parser.add_image_paths_arguments(required=False)
+            parser.add_output_arguments()
+            parser.add_argument(
+                "--output-resolution",
+                type=int,
+                default=1024,
+                help="Pixel-area budget for reference images and automatic output dimensions (default: 1024).",
+            )
+            parser.add_argument(
+                "--use-kv-cache",
+                action=argparse.BooleanOptionalAction,
+                default=True,
+                help="Reuse text and reference image prefix attention across steps (default: on).",
+            )
 
         elif command == "mflux-generate-qwen-edit":
             parser.add_general_arguments()

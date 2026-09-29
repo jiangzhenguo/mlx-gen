@@ -1834,8 +1834,10 @@ def _qwen21_capabilities(identity: _ModelIdentity) -> ModelCapabilities:
 
     A separate single-stream block-causal transformer with a Qwen3-VL text encoder and a 4-channel
     causal VAE, so it shares nothing with the original Qwen Image rows: no ControlNet, no edit
-    sidecars, no outpaint/reframe. Latent image-to-image is reachable through the same
-    `qwen21.generate` handler, which is what the ported variant implements.
+    sidecars, no outpaint/reframe. Text-to-image and latent image-to-image run through the
+    `qwen21.generate` handler; single/multi-reference instruction editing (up to 10 reference
+    images, RGBA output, prefix KV cache) runs through `qwen21.edit`, which is the reference
+    implementation rather than the original txt2img one.
     """
     return ModelCapabilities(
         schema_version=CAPABILITIES_SCHEMA_VERSION,
@@ -1852,6 +1854,20 @@ def _qwen21_capabilities(identity: _ModelIdentity) -> ModelCapabilities:
                 **_lora_capability_kwargs(identity=identity, capability_id="qwen21.text", supports_lora=False),
             ),
             GenerationCapability(
+                id="qwen21.edit",
+                public_task=IMAGE_TO_IMAGE,
+                mode=MODE_EDIT_REFERENCE,
+                handler_id="qwen21.edit",
+                min_images=1,
+                max_images=10,
+                # The default IMAGE_TO_IMAGE row for 2.1, so a bare `--image-paths` run reaches
+                # reference editing rather than dying on a latent-img2img strength check. This
+                # matches how the original Qwen edit family declares its rows. `qwen21.latent`
+                # stays reachable by naming its capability explicitly.
+                default_for_task=True,
+                **_lora_capability_kwargs(identity=identity, capability_id="qwen21.edit", supports_lora=False),
+            ),
+            GenerationCapability(
                 id="qwen21.latent",
                 public_task=IMAGE_TO_IMAGE,
                 mode=MODE_LATENT_IMG2IMG,
@@ -1859,7 +1875,6 @@ def _qwen21_capabilities(identity: _ModelIdentity) -> ModelCapabilities:
                 min_images=1,
                 max_images=1,
                 supports_image_strength=True,
-                default_for_task=True,
                 resize_modes=RESIZE_MODE_CHOICES,
                 **_lora_capability_kwargs(identity=identity, capability_id="qwen21.latent", supports_lora=False),
                 **_ordinary_i2i_canvas_contract(),

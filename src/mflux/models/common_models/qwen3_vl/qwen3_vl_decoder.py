@@ -86,11 +86,23 @@ class Qwen3VLDecoder(nn.Module):
                 n_image_tokens = mx.sum(image_positions).item()
 
                 if n_image_tokens > 0 and image_embeds.shape[0] >= n_image_tokens:
-                    inputs_embeds = Qwen3VLDecoder._replace_image_token_embeddings(
-                        inputs_embeds=inputs_embeds,
-                        image_positions=image_positions,
-                        image_embeds=image_embeds,
-                    )
+                    # Walk the flattened positions and splice image rows in order. An earlier
+                    # vectorised version derived each image row's index from a cumsum of the
+                    # mask, which drifts once the mask is bf16-valued.
+                    image_positions_flat = image_positions.flatten()
+                    inputs_embeds_flat = inputs_embeds.reshape(-1, inputs_embeds.shape[-1])
+
+                    new_embeds_list = []
+                    image_idx = 0
+                    for i in range(len(image_positions_flat)):
+                        if image_positions_flat[i] and image_idx < image_embeds.shape[0]:
+                            new_embeds_list.append(image_embeds[image_idx])
+                            image_idx += 1
+                        else:
+                            new_embeds_list.append(inputs_embeds_flat[i])
+
+                    new_embeds = mx.stack(new_embeds_list, axis=0)
+                    inputs_embeds = new_embeds.reshape(inputs_embeds.shape)
 
         # Create attention mask with causal masking (from QwenEncoder)
         if attention_mask is None:
@@ -161,24 +173,6 @@ class Qwen3VLDecoder(nn.Module):
         if use_cache:
             return logits, present_key_values
         return logits
-
-    @staticmethod
-    def _replace_image_token_embeddings(
-        inputs_embeds: mx.array,
-        image_positions: mx.array,
-        image_embeds: mx.array,
-    ) -> mx.array:
-        image_positions_flat = image_positions.flatten()
-        inputs_embeds_flat = inputs_embeds.reshape(-1, inputs_embeds.shape[-1])
-        image_offsets = mx.cumsum(image_positions_flat.astype(mx.int32), axis=0) - 1
-        safe_offsets = mx.maximum(image_offsets, mx.zeros_like(image_offsets))
-        replacement_embeds = image_embeds[safe_offsets]
-        inputs_embeds_flat = mx.where(
-            mx.expand_dims(image_positions_flat, axis=-1),
-            replacement_embeds,
-            inputs_embeds_flat,
-        )
-        return inputs_embeds_flat.reshape(inputs_embeds.shape)
 
     def _get_image_features(self, pixel_values: mx.array, image_grid_thw: mx.array) -> list[mx.array]:
         if self.visual is None:
