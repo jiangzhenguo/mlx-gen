@@ -83,7 +83,11 @@ def main() -> None:
         )
         QwenImage21LatentCreator.validate_resolution(args.output_resolution)
         model_config = ConfigResolution.resolve_restricted(
-            args.model, "qwen-image-2.1", model_path=args.model_path, base_model=args.base_model
+            args.model,
+            "qwen-image-2.1",
+            model_path=args.model_path,
+            base_model=args.base_model,
+            extra_keys=("qwen-image-2.1-turbo",),
         )
     except (ModelConfigError, ValueError) as exc:
         parser.error(str(exc))

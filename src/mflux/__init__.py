@@ -64,6 +64,9 @@ _LAZY_EXPORTS = {
         "run_outpaint",
     )
 }
+# The caption route reaches PIL through its image loader, so it stays off the plain `import mflux`
+# chain for the same reason as the outpaint entry points (tests/test_import_hygiene.py).
+_LAZY_EXPORTS["Qwen3VLCaption"] = "mflux.models.qwen3_vl_caption.model.qwen3_vl_caption"
 
 __all__ = [
     "GenerationCapability",
@@ -81,6 +84,7 @@ __all__ = [
     "OutpaintPassPlan",
     "OutpaintRequest",
     "OutpaintSession",
+    "Qwen3VLCaption",
     "REFRAME_OUTPAINT_PROFILE_ID",
     "ReframeSession",
     "ResolvedTask",

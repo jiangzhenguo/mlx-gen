@@ -37,6 +37,8 @@ class CompletionGenerator:
             "mlxgen-generate-minimax-h3",
             "mflux-refine-fibo",
             "mflux-inspire-fibo",
+            "mlxgen-caption",
+            "mflux-caption",
             "mflux-concept",
             "mflux-concept-from-image",
             "mflux-save",
@@ -344,6 +346,12 @@ class CompletionGenerator:
             parser.add_argument("--temperature", type=float, help="Temperature for VLM")
             parser.add_argument("--max-tokens", type=int, help="Max tokens for VLM generation")
             parser.add_argument("--seed", type=int, help="Seed for VLM generation")
+
+        elif command in {"mlxgen-caption", "mflux-caption"}:
+            # Real entrypoint parser (importable, no side effects beyond module import).
+            from mflux.models.qwen3_vl_caption.cli.caption import build_parser as caption_parser
+
+            return caption_parser()
 
         elif command == "mflux-concept":
             parser.add_general_arguments()

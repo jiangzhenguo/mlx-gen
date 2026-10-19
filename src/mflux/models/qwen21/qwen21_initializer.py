@@ -8,6 +8,7 @@ from mflux.models.qwen21.model.qwen21_text_encoder.qwen21_text_encoder import Qw
 from mflux.models.qwen21.model.qwen21_transformer.qwen21_transformer import Qwen21Transformer
 from mflux.models.qwen21.model.qwen21_vae.qwen21_vae import Qwen21VAE
 from mflux.models.qwen21.weights.qwen21_weight_definition import Qwen21WeightDefinition
+from mflux.models.qwen21.weights.sample_sigmas import load_sample_sigmas
 
 
 class Qwen21Initializer:
@@ -20,6 +21,7 @@ class Qwen21Initializer:
     ) -> None:
         path = model_path if model_path else model_config.model_name
         Qwen21Initializer._init_config(model, model_config)
+        model.sample_sigmas = load_sample_sigmas(path)
         weights = Qwen21Initializer._load_weights(path)
         Qwen21Initializer._init_tokenizers(model, path)
         Qwen21Initializer._init_models(model)

@@ -15,6 +15,12 @@ EXCLUDED_SCRIPTS = {
     "mlxgen-generate",
     "mlx-gen",
     "mlx-generate",
+    # CosyVoice3 audio backends: also subcommand-style (`mlxgen tts` / `mlxgen dub`),
+    # and the user calls them through the `mlxgen` router, not directly. Static
+    # completion would duplicate the router's options and go stale whenever a new
+    # CosyVoice3 prepare flag lands.
+    "mlxgen-tts",
+    "mlxgen-dub",
 }
 
 

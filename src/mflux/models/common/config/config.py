@@ -37,6 +37,7 @@ class Config:
         masked_image_path: Path | str | None = None,
         controlnet_strength: float | None = None,
         scheduler: str = "linear",
+        sigmas: list[float] | None = None,
         canvas_policy: str = CANVAS_POLICY_EXACT_RESIZE,
         resize_mode: str = "resize",
         preserve_image_aspect_ratio: bool = False,
@@ -44,6 +45,12 @@ class Config:
     ):
         if dimension_multiple <= 0:
             raise ValueError("Dimension multiple must be positive.")
+        if sigmas is not None:
+            # A checkpoint-supplied schedule (e.g. Qwen-Image-2.1-Turbo's `sample_sigmas`)
+            # defines the step count; upstream ignores num_inference_steps in that case too.
+            if len(sigmas) < 2:
+                raise ValueError("An explicit sigma schedule needs at least two entries.")
+            num_inference_steps = len(sigmas)
         if num_inference_steps is None:
             num_inference_steps = default_inference_steps(model_config, fallback=4)
         if num_inference_steps < 1:
@@ -100,6 +107,7 @@ class Config:
         self._controlnet_strength = controlnet_strength
         self._scheduler_str = scheduler
         self._scheduler = None
+        self._sigmas = [float(s) for s in sigmas] if sigmas is not None else None
         self._time_steps = None
         self._canvas_policy = resolved_dimensions.canvas_policy
         # Orthogonal to canvas_policy: the policy picks the canvas, the mode picks
@@ -161,6 +169,11 @@ class Config:
     @property
     def num_inference_steps(self) -> int:
         return self._num_inference_steps
+
+    @property
+    def sigmas(self) -> list[float] | None:
+        """Checkpoint-supplied sampling schedule (terminal zero excluded), or None."""
+        return self._sigmas
 
     @property
     def precision(self) -> mx.Dtype:

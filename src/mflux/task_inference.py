@@ -2635,6 +2635,7 @@ def _is_qwen21(aliases: set[str], model_key: str) -> bool:
     """
     return (
         _has_alias(aliases, "qwen-image-2.1", "qwen-2.1", "qwen-image-21")
+        or _has_alias(aliases, "qwen-image-2.1-turbo", "qwen-2.1-turbo", "qwen-image-21-turbo")
         or "qwen-image-2.1" in model_key
         or "qwen-2.1" in model_key
         or "qwen-image-21" in model_key

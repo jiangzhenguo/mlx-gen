@@ -24,6 +24,12 @@ class LinearScheduler(BaseScheduler):
 
     def _get_sigmas(self) -> mx.array:
         model_config = self.config.model_config
+        if self.config.sigmas is not None:
+            # Checkpoint-supplied schedule (e.g. Qwen-Image-2.1-Turbo's `sample_sigmas`):
+            # used verbatim with the terminal zero appended — upstream applies no mu shifting
+            # and no terminal stretching to it either.
+            fixed = mx.array(self.config.sigmas).astype(mx.float32)
+            return mx.concatenate([fixed, mx.zeros(1)])
         num_steps = self.config.num_inference_steps
         sigmas = mx.linspace(1.0, 1.0 / num_steps, num_steps)
         sigmas = mx.array(sigmas).astype(mx.float32)

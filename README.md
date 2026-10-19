@@ -9,8 +9,13 @@ MLX-Gen is a local image and video generation runtime for Apple Silicon and MLX.
 preparation, SeedVR2 and SwiftVR image/video restoration and upscaling, optimized quantized model
 variants, and application progress callbacks.
 
+> [!NOTE]
+> **This repository is a personal fork** of [lpalbou/mlx-gen](https://github.com/lpalbou/mlx-gen)
+> with local Apple Silicon workflow additions that are not (yet) upstream. See
+> [Fork additions](#fork-additions) below for what changed relative to upstream `main`.
+
 > [!IMPORTANT]
-> MLX-Gen started as a fork of [mflux](https://github.com/filipstrand/mflux). Most credit for the
+> Upstream MLX-Gen started as a fork of [mflux](https://github.com/filipstrand/mflux). Most credit for the
 > current codebase goes to Filip Strand and the original mflux contributors. MLX-Gen keeps that
 > foundation and focuses on making local generation predictable for real applications: users
 > download or prepare models before running a job, then use one `mlxgen` command to generate,
@@ -30,6 +35,28 @@ authoring tool in the [AbstractFramework](https://abstractframework.ai/) ecosyst
 orchestrate generative image/video capabilities exposed through AbstractVision and AbstractCore; the
 same MLX-Gen steps can also be run directly with the command-line examples below.
 
+## Fork additions
+
+Relative to upstream [lpalbou/mlx-gen](https://github.com/lpalbou/mlx-gen) `main` (0.38.0), this
+fork adds:
+
+| Addition | Commands / handles | Docs |
+| --- | --- | --- |
+| **Qwen-Image-2.1** txt2img, latent img2img, and reference edit (up to 10 refs, native RGBA, prefix KV cache) | `mlxgen generate --model qwen-image-2.1`, `mlxgen-generate-qwen-2.1`, `mlxgen-generate-qwen-2.1-edit` | [docs/qwen-image-21.md](docs/qwen-image-21.md), [docs/qwen-image-21-editing.md](docs/qwen-image-21-editing.md) |
+| **Qwen3-VL caption** (image → text / 提示词反推) with multimodal RoPE + deepstack; optional `mlx-vlm` parity backend | `mlxgen-caption` / `mflux-caption` | [docs/qwen3-vl-caption.md](docs/qwen3-vl-caption.md) |
+| **CosyVoice 3** zero-shot TTS + video narration mux (isolated Python 3.11 worker venv; HF / ModelScope mirrors) | `mlxgen tts`, `mlxgen dub`, `mlxgen prepare --model cosyvoice3` | [docs/cosyvoice3-tts.md](docs/cosyvoice3-tts.md) |
+| Character **turnaround / 四视图** ops cookbook (canvas vs edit vs upscale, per-route size contracts, measured recipes) | — | [docs/character-four-view-operations.md](docs/character-four-view-operations.md) |
+| MLX floor raised to **0.32.3** so Qwen3-VL reference encoding does not silently roll back | `pyproject.toml` | — |
+
+Install / run this fork from a local checkout (upstream PyPI package does not include the rows above):
+
+```sh
+uv sync
+uv run mlxgen --help
+uv run mlxgen-caption --help
+uv run mlxgen tts --help
+```
+
 ## What It Does
 
 MLX-Gen runs supported Hugging Face source models after you download them locally. It also runs
@@ -41,7 +68,7 @@ long-running local jobs.
 
 The main capabilities are:
 
-- text-to-image generation with Qwen Image, FLUX.2 Klein, Z-Image, ERNIE Image Turbo, Bonsai Image,
+- text-to-image generation with Qwen Image, **Qwen-Image-2.1**, FLUX.2 Klein, Z-Image, ERNIE Image Turbo, Bonsai Image,
   FIBO, and their optimized quantized variants where available;
 - image-to-image modes, including latent img2img, instruction/reference edits, multi-reference
   edits, masked edit/inpaint where the selected model supports `--mask-path` (Qwen edit models,
@@ -56,6 +83,11 @@ The main capabilities are:
   (`--outpaint-passes`), and source-locked outpaint with the original crop restored on every FLUX.2
   Klein model, distilled 4B/9B and base 4B/9B alike (distilled 4B q8 is the fastest measured route,
   at 54.6 s on an Apple M5 Max — see `docs/reframe-outpaint.md`);
+- image understanding the other way round: describe an image with a local MLX Qwen3-VL checkpoint
+  (`mlxgen-caption`), which runs mlx-gen's own Qwen3-VL decoder and vision tower with multimodal
+  RoPE and deepstack enabled, accepts any MLX-format dense Qwen3-VL repo at any published
+  quantization level, and can hand the same checkpoint to the optional `mlx-vlm` runtime for parity
+  checks — see `docs/qwen3-vl-caption.md`;
 - Wan2.2 text-to-video, image-to-video, and prompt-guided video-to-video (plain or masked via
   `--video-mask-path`, which locks everything outside the mask to the source video), including
   TI2V-5B BF16/q8 packages plus A14B T2V/I2V BF16 and mixed q8/BF16 packages; video-to-video
@@ -76,6 +108,10 @@ The main capabilities are:
   sound, a score, and spoken dialogue with the speaker's mouth animated to match. Run it with
   `--quantize 8` or from a prepared 75 GB q8 package (`mlxgen prepare`) on a 128 GB Mac (see
   `docs/minimax-h3.md`);
+- CosyVoice 3 **zero-shot voice cloning TTS** and video dubbing (`mlxgen tts` / `mlxgen dub`):
+  prepare an isolated package with `mlxgen prepare --model cosyvoice3`, then synthesize WAV from a
+  reference clip or replace/mix narration onto an existing MP4 (typically a MiniMax-H3 output) —
+  see `docs/cosyvoice3-tts.md`;
 - ByteDance Bernini-R 1.3B renderer support (`bernini-r-1.3b`): generate video from one to eight
   ordered ordinary reference images, edit one source video with those references, or run
   source-only prompt-guided video editing through the unified CLI and Python runtime. Download
@@ -439,6 +475,10 @@ progress callbacks make long runs observable.
 
 - [Getting started](docs/getting-started.md): installation, first runs, SeedVR2 upscaling, and Wan video.
 - [API and CLI](docs/api.md): command surface, router behavior, image-to-image modes, generative reframe, backend-specific outpaint, SeedVR2 sizing, Wan video sizes, capabilities, and Python entry points.
+- [Qwen-Image-2.1](docs/qwen-image-21.md) / [editing](docs/qwen-image-21-editing.md): fork-added second-generation Qwen image routes (txt2img, latent i2i, reference edit).
+- [Qwen3-VL caption](docs/qwen3-vl-caption.md): fork-added image-to-text / prompt reverse with local MLX Qwen3-VL checkpoints.
+- [CosyVoice 3 TTS and dubbing](docs/cosyvoice3-tts.md): fork-added `mlxgen tts` / `mlxgen dub` and the isolated prepare package.
+- [Character four-view ops](docs/character-four-view-operations.md): measured turnaround-sheet recipes and per-route size contracts.
 - [Image edit modes](docs/image-edit-modes.md): what latent img2img, edit-reference, multi-reference, generative reframe, and outpaint mean in practice, with examples.
 - [Wan video](docs/wan-video.md): practical Wan2.2 T2V/I2V sizing, plain and masked prompt-guided A14B video-to-video with included proof artifacts, the natively ported Wan2.1-VACE-1.3B route (reference-image object injection and learned mask conditioning), a measured motion-fidelity ladder (strength vs gesture preservation), broader A14B target size families, and 5-second M5 Max comparison clips.
 - [Bernini-R 1.3B](docs/bernini.md): ordered reference-to-video, reference-guided/source-only video editing, factored downloads, BF16-only memory guidance, and playable proof artifacts.

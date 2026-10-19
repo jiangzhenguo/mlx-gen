@@ -15,18 +15,32 @@ class Qwen21WeightMapping(WeightMapping):
         targets = [
             WeightTarget(to_pattern="img_in.weight", from_pattern=["img_in.weight"]),
             WeightTarget(to_pattern="proj_out.weight", from_pattern=["proj_out.weight"]),
-            WeightTarget(to_pattern="modulation.layers.1.weight", from_pattern=["modulation.1.weight"]),
+            # Community MLX conversions (e.g. abenzerps/Qwen-Image-2.1-Uncensored-GGUF) drop the
+            # leading Sequential index and key this as "modulation.0.weight"; the official
+            # diffusers checkpoint uses "modulation.1.weight". Accept both.
+            WeightTarget(
+                to_pattern="modulation.layers.1.weight",
+                from_pattern=["modulation.1.weight", "modulation.0.weight"],
+            ),
             WeightTarget(to_pattern="norm_out.linear.weight", from_pattern=["norm_out.linear.weight"]),
             WeightTarget(to_pattern="txt_in.text_norm.weight", from_pattern=["txt_in.text_norm.weight"]),
             WeightTarget(to_pattern="txt_in.in_layer.weight", from_pattern=["txt_in.in_layer.weight"]),
             WeightTarget(to_pattern="txt_in.out_layer.weight", from_pattern=["txt_in.out_layer.weight"]),
+            # Same community-conversion difference: the timestep embedder is flattened to
+            # "time_text_embed.linear_{1,2}" instead of listing the "timestep_embedder" hop.
             WeightTarget(
                 to_pattern="time_text_embed.timestep_embedder.linear_1.weight",
-                from_pattern=["time_text_embed.timestep_embedder.linear_1.weight"],
+                from_pattern=[
+                    "time_text_embed.timestep_embedder.linear_1.weight",
+                    "time_text_embed.linear_1.weight",
+                ],
             ),
             WeightTarget(
                 to_pattern="time_text_embed.timestep_embedder.linear_2.weight",
-                from_pattern=["time_text_embed.timestep_embedder.linear_2.weight"],
+                from_pattern=[
+                    "time_text_embed.timestep_embedder.linear_2.weight",
+                    "time_text_embed.linear_2.weight",
+                ],
             ),
         ]
         for block in range(Qwen21WeightMapping.NUM_TRANSFORMER_BLOCKS):

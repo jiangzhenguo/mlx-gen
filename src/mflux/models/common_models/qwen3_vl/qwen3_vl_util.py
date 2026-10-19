@@ -1,4 +1,5 @@
 import mlx.core as mx
+import numpy as np
 
 from mflux.models.common_models.qwen3_vl.qwen3_vl_decoder import Qwen3VLDecoder
 
@@ -10,6 +11,10 @@ class Qwen3VLUtil:
         top_p: float,
         temperature: float = 1.0,
     ) -> mx.array:
+        # Greedy decoding: temperature <= 0 takes the argmax instead of sampling. Dividing by a
+        # zero temperature below would produce NaNs, so caption routes pass 0.0 for determinism.
+        if temperature <= 0:
+            return mx.argmax(logits.astype(mx.float32), axis=-1).astype(mx.int32)
         if temperature != 1.0:
             logits = logits / temperature
         probs = mx.softmax(logits.astype(mx.float32), axis=-1)
@@ -22,6 +27,86 @@ class Qwen3VLUtil:
         filtered_probs = filtered_probs / mx.sum(filtered_probs, axis=-1, keepdims=True)
         sorted_token_id = mx.random.categorical(mx.log(filtered_probs), axis=-1)
         return sorted_indices[sorted_token_id].astype(mx.int32)
+
+    @staticmethod
+    def build_multimodal_position_ids(
+        input_ids: mx.array,
+        image_grid_thw: mx.array,
+        spatial_merge_size: int,
+        image_token_id: int,
+        attention_mask: mx.array | None = None,
+    ) -> mx.array:
+        """3-axis (t, h, w) RoPE positions for a prompt that mixes text and image tokens.
+
+        Qwen3-VL numbers image tokens by their (t, h, w) grid coordinate inside the merged patch
+        grid and advances the running text position by `max(llm_grid_h, llm_grid_w)` after each
+        image, instead of treating the whole sequence as one flat line. Caption/image-understanding
+        quality depends on this: with a flat arange the spatial layout of the image region is lost.
+        Returns an int32 array shaped (3, batch, seq_len).
+        """
+        ids = np.asarray(input_ids)
+        if ids.ndim == 1:
+            ids = ids[None, :]
+        batch_size, seq_len = ids.shape
+        if attention_mask is None:
+            mask = np.ones((batch_size, seq_len), dtype=np.int32)
+        else:
+            mask = np.asarray(attention_mask)
+            if mask.ndim == 1:
+                mask = mask[None, :]
+        grids = np.asarray(image_grid_thw).reshape(-1, 3).tolist()
+
+        position_rows = np.zeros((3, batch_size, seq_len), dtype=np.int32)
+        grid_index = 0
+        for batch_idx in range(batch_size):
+            active = [idx for idx in range(seq_len) if int(mask[batch_idx, idx]) == 1]
+            token_types = [1 if int(ids[batch_idx, idx]) == image_token_id else 0 for idx in active]
+            rows = [[], [], []]
+            current_position = 0
+            start_idx = 0
+            while start_idx < len(token_types):
+                modality = token_types[start_idx]
+                end_idx = start_idx + 1
+                while end_idx < len(token_types) and token_types[end_idx] == modality:
+                    end_idx += 1
+
+                if modality == 0:
+                    length = end_idx - start_idx
+                    for axis in range(3):
+                        rows[axis].extend(range(current_position, current_position + length))
+                    current_position += length
+                else:
+                    if grid_index >= len(grids):
+                        raise ValueError("Image token groups exceed the provided image_grid_thw entries.")
+                    grid_t, grid_h, grid_w = (int(value) for value in grids[grid_index])
+                    llm_h = grid_h // spatial_merge_size
+                    llm_w = grid_w // spatial_merge_size
+                    expected = grid_t * llm_h * llm_w
+                    if expected != end_idx - start_idx:
+                        raise ValueError(
+                            "Image token group length does not match image_grid_thw: "
+                            f"{end_idx - start_idx} tokens for a grid-derived {expected}."
+                        )
+                    for time_idx in range(grid_t):
+                        for height_idx in range(llm_h):
+                            for width_idx in range(llm_w):
+                                rows[0].append(current_position + time_idx)
+                                rows[1].append(current_position + height_idx)
+                                rows[2].append(current_position + width_idx)
+                    current_position += max(llm_h, llm_w)
+                    grid_index += 1
+
+                start_idx = end_idx
+
+            if any(len(row) != len(active) for row in rows):
+                raise ValueError("Multimodal position construction produced an invalid sequence length.")
+            for local_idx, source_idx in enumerate(active):
+                for axis in range(3):
+                    position_rows[axis, batch_idx, source_idx] = rows[axis][local_idx]
+
+        if grid_index != len(grids):
+            raise ValueError("image_grid_thw entries exceed the image token groups.")
+        return mx.array(position_rows, dtype=mx.int32)
 
     @staticmethod
     def generate_text(

@@ -57,6 +57,7 @@ class QwenImage21(nn.Module):
             height=height,
             guidance=guidance,
             scheduler=scheduler,
+            sigmas=self.sample_sigmas,
             image_path=image_path,
             image_strength=image_strength,
             model_config=self.model_config,

@@ -54,7 +54,7 @@ def main() -> None:
         _top_level_parser().print_help()
         return
 
-    if argv and argv[0] in {"download", "prepare", "capabilities", "validation", "upscale"}:
+    if argv and argv[0] in {"download", "prepare", "capabilities", "validation", "upscale", "tts", "dub"}:
         _run_model_command(argv)
         return
 
@@ -272,7 +272,7 @@ def _normalize_command(argv: list[str]) -> list[str]:
 def _top_level_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mlxgen",
-        usage="mlxgen [generate|upscale|capabilities|validation|download|prepare] ...",
+        usage="mlxgen [generate|upscale|capabilities|validation|download|prepare|tts|dub] ...",
         description=(
             f"{VersionUtil.format_cli_release_label()}\n\n"
             "Prepare local model assets and generate images or videos with MLX-Gen."
@@ -281,6 +281,8 @@ def _top_level_parser() -> argparse.ArgumentParser:
             "Commands:\n"
             "  generate    Generate images or videos, and edit images, from a prepared or cached model.\n"
             "  upscale     Restore or upscale images and videos with SeedVR2 or SwiftVR.\n"
+            "  tts         Synthesize speech with CosyVoice3 (voice cloning, instructed style).\n"
+            "  dub         Narrate an existing video (e.g. a MiniMax-H3 clip) with CosyVoice3 speech.\n"
             "  capabilities Inspect model generation tasks, modes, and option support.\n"
             "  validation   Inspect release-validation evidence for exact model/package rows.\n"
             "  download     Explicitly download a model snapshot into the Hugging Face cache.\n"
@@ -289,12 +291,15 @@ def _top_level_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  mlxgen generate --model z-image-turbo --prompt 'A puffin standing on a cliff'\n"
             "  mlxgen generate --model wan2.2-ti2v-5b --prompt 'A city timelapse'\n"
+            "  mlxgen tts --ref-audio voice.wav --ref-text '参考音频的文字' --text '你好，世界'\n"
+            "  mlxgen dub --video-path video.mp4 --ref-audio voice.wav --text '旁白内容' --mode mix\n"
             "  mlxgen upscale --model seedvr2-3b --image-path input.png --resolution 2x --output upscaled.png\n"
             "  mlxgen capabilities --model flux2-klein-4b\n"
             "  mlxgen capabilities --model swiftvr\n"
             "  mlxgen validation --model AbstractFramework/qwen-image-edit-2509-8bit\n"
             "  mlxgen download --model Qwen/Qwen-Image\n"
             "  mlxgen prepare --model Qwen/Qwen-Image --path ./models/qwen-image-8bit --quantize 8\n"
+            "  mlxgen prepare --model cosyvoice3\n"
             "\n"
             "Use 'mlxgen <command> --help' for command-specific options."
         ),
@@ -493,6 +498,12 @@ def _run_model_command(argv: list[str]) -> None:
     if command == "upscale":
         _upscale_image(argv[1:])
         return
+    if command == "tts":
+        _run_audio_command("mflux.models.cosyvoice3.cli.tts", "mlxgen tts", argv[1:])
+        return
+    if command == "dub":
+        _run_audio_command("mflux.models.cosyvoice3.cli.dub", "mlxgen dub", argv[1:])
+        return
     if command == "download":
         _download_model(argv[1:])
         return
@@ -509,6 +520,23 @@ def _upscale_image(argv: list[str]) -> None:
     try:
         sys.argv = ["mlxgen upscale", *argv]
         upscale_main()
+    finally:
+        sys.argv = previous_argv
+
+
+def _run_audio_command(module_path: str, prog: str, argv: list[str]) -> None:
+    """Dispatch `mlxgen tts` / `mlxgen dub` to the CosyVoice3 audio backends.
+
+    Deferred import, mirroring _download_model: the audio stack must stay off the
+    plain router import path.
+    """
+    import importlib
+
+    main_entry = importlib.import_module(module_path).main
+    previous_argv = sys.argv
+    try:
+        sys.argv = [prog, *argv]
+        main_entry()
     finally:
         sys.argv = previous_argv
 
@@ -626,6 +654,13 @@ def _download_model(argv: list[str]) -> None:
     if _is_depth_pro_download(args.model):
         _download_depth_pro()
         return
+
+    if _is_cosyvoice3_alias(args.model):
+        parser.error(
+            "CosyVoice3 is a packaged TTS backend: weights alone are not runnable. "
+            "Use `mlxgen prepare --model cosyvoice3` to build the full package "
+            "(weights + inference code + isolated environment)."
+        )
 
     model_config = _model_config(args.model, base_model=args.base_model)
     repo_id = model_config.model_name if model_config is not None else args.model
@@ -834,6 +869,9 @@ def _download_depth_pro() -> None:
 
 
 def _prepare_model(argv: list[str]) -> None:
+    if _is_cosyvoice3_alias(_option_value(argv, "--model") or _option_value(argv, "-m")):
+        _prepare_cosyvoice3(argv)
+        return
     from mflux.models.common.cli.save import main as save_main
 
     previous_argv = sys.argv
@@ -843,6 +881,59 @@ def _prepare_model(argv: list[str]) -> None:
             save_main()
     finally:
         sys.argv = previous_argv
+
+
+def _is_cosyvoice3_alias(model: str | None) -> bool:
+    from mflux.models.cosyvoice3.constants import is_cosyvoice3_alias
+
+    return is_cosyvoice3_alias(model)
+
+
+def _prepare_cosyvoice3(argv: list[str]) -> None:
+    """Prepare the self-contained CosyVoice3 package (weights + code + isolated venv)."""
+    from mflux.models.cosyvoice3 import constants
+    from mflux.models.cosyvoice3.prepare import prepare_package
+
+    parser = argparse.ArgumentParser(
+        prog="mlxgen prepare",
+        description=(
+            "Prepare a self-contained CosyVoice3 TTS package: official weights, official inference "
+            "code, and an isolated worker environment. Afterwards `mlxgen tts` and `mlxgen dub` run "
+            "fully offline."
+        ),
+    )
+    parser.add_argument("--model", "-m", required=True, help="cosyvoice3")
+    parser.add_argument(
+        "--path",
+        type=Path,
+        default=None,
+        help=f"Package directory (default: {constants.default_package_dir()}).",
+    )
+    parser.add_argument(
+        "--with-rl",
+        action="store_true",
+        help="Also download llm.rl.pt (the RL-tuned LLM variant, +2 GB).",
+    )
+    parser.add_argument("--force", action="store_true", help="Delete an existing package at --path first.")
+    parser.add_argument(
+        "--source",
+        choices=["auto", "hf", "modelscope"],
+        default="auto",
+        help="Weight source: Hugging Face, the ModelScope mirror, or auto (HF with ModelScope fallback).",
+    )
+    parser.add_argument("--json-events", action="store_true", help="Emit machine-readable runtime events on stdout.")
+    args = parser.parse_args(argv)
+    if not _is_cosyvoice3_alias(args.model):
+        parser.error(f"--model must be cosyvoice3 for this prepare flow. Got: {args.model!r}")
+
+    with allow_downloads():
+        prepare_package(
+            args.path or constants.default_package_dir(),
+            with_rl=bool(args.with_rl),
+            force=bool(args.force),
+            json_events=bool(args.json_events),
+            source=args.source,
+        )
 
 
 def _download_patterns(model_config: ModelConfig | None, repo_id: str) -> list[str] | None:

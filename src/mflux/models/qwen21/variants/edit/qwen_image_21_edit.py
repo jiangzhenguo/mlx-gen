@@ -52,7 +52,10 @@ class QwenImage21Edit(nn.Module):
         default_width, default_height = QwenImage21LatentCreator.dimensions(output_resolution, ratio)
         width = default_width if width is None else width
         height = default_height if height is None else height
-        QwenImage21LatentCreator.validate(width, height, num_inference_steps, len(images))
+        # A checkpoint-embedded schedule (Turbo's sample_sigmas) fixes the step count, the
+        # same way upstream ignores num_inference_steps once sample_sigmas are configured.
+        effective_steps = len(self.sample_sigmas) if self.sample_sigmas else num_inference_steps
+        QwenImage21LatentCreator.validate(width, height, effective_steps, len(images))
         if guidance < 1 or not np.isfinite(guidance):
             raise ValueError("guidance must be finite and at least 1.")
         if guidance > 1 and negative_prompt is None:
@@ -63,6 +66,7 @@ class QwenImage21Edit(nn.Module):
             width=width,
             height=height,
             guidance=guidance,
+            sigmas=self.sample_sigmas,
         )
         images = [
             image.resize(

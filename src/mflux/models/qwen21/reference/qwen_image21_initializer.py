@@ -16,6 +16,7 @@ from mflux.models.qwen21.reference.model.qwen_image21_text_encoder.text_encoder 
 from mflux.models.qwen21.reference.model.qwen_image21_transformer.transformer import QwenImage21Transformer
 from mflux.models.qwen21.reference.model.qwen_image21_vae.vae import QwenImage21VAE
 from mflux.models.qwen21.reference.weights.qwen_image21_weight_definition import QwenImage21WeightDefinition
+from mflux.models.qwen21.weights.sample_sigmas import load_sample_sigmas
 
 if TYPE_CHECKING:
     from mflux.models.qwen21.reference import QwenImage21Edit
@@ -34,6 +35,7 @@ class QwenImage21Initializer:
         model.lora_paths = None
         model.lora_scales = None
         model._checkpoint_path = str(root)
+        model.sample_sigmas = load_sample_sigmas(str(root))
         model._component_configs = {
             name: QwenImage21Initializer._component_config(root, name)
             for name in ("vae", "transformer", "text_encoder")
