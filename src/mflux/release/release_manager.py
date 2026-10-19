@@ -13,8 +13,8 @@ class ReleaseManager:
     def create_release(
         github_token: str,
         pypi_token: str,
-        github_repo: str = "lpalbou/mlx-gen",
-        package_name: str = "mlx-gen",
+        github_repo: str = "jiangzhenguo/mlx-gen",
+        package_name: str = "mlx-gen-jzg",
     ) -> None:
         # 0. Load version from pyproject.toml
         version = VersionUtil.get_mflux_version()

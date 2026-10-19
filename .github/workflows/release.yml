@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       publish_confirmation:
-        description: "Required when publish=true: publish-mlx-gen-<version>"
+        description: "Required when publish=true: publish-mlx-gen-jzg-<version>"
         required: false
         type: string
 
@@ -98,7 +98,7 @@ jobs:
           import urllib.error
           import urllib.request
 
-          package_name = "mlx-gen"
+          package_name = "mlx-gen-jzg"
           pyproject = tomllib.loads(Path("pyproject.toml").read_text())
           project = pyproject["project"]
           version = project["version"]
@@ -173,7 +173,7 @@ jobs:
     if: needs.lint-build.outputs.should_publish == 'true' && needs.publish-pypi.result == 'success'
     environment:
       name: github-release
-      url: https://github.com/lpalbou/mlx-gen/releases
+      url: https://github.com/jiangzhenguo/mlx-gen/releases
     permissions:
       contents: write
     steps:
@@ -194,7 +194,7 @@ jobs:
           set -euo pipefail
 
           tag="v${RELEASE_VERSION}"
-          title="mlx-gen ${RELEASE_VERSION}"
+          title="mlx-gen-jzg ${RELEASE_VERSION}"
 
           if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$tag" dist/* --repo "$GH_REPO" --clobber
@@ -214,7 +214,7 @@ jobs:
     if: needs.lint-build.outputs.should_publish == 'true'
     environment:
       name: pypi
-      url: https://pypi.org/project/mlx-gen/
+      url: https://pypi.org/project/mlx-gen-jzg/
     permissions:
       contents: read
       id-token: write

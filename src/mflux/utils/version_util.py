@@ -8,7 +8,7 @@ import toml
 
 
 class VersionUtil:
-    PACKAGED_RELEASE_DATE = "2026-09-21"
+    PACKAGED_RELEASE_DATE = "2026-10-19"
     _version: str | None = None
     _release_date: str | None = None
 
@@ -50,7 +50,7 @@ class VersionUtil:
 
     @staticmethod
     def _get_installed_version() -> str | None:
-        for distribution_name in ("mlx-gen", "abstractvision-mflux", "mflux"):
+        for distribution_name in ("mlx-gen-jzg", "mlx-gen", "abstractvision-mflux", "mflux"):
             version = VersionUtil._read_installed_distribution_version(distribution_name)
             if version is not None:
                 return version

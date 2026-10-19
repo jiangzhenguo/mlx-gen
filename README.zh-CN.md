@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-[![mlx-gen](https://img.shields.io/pypi/v/mlx-gen?label=mlx-gen&logo=pypi&logoColor=white)](https://pypi.org/project/mlx-gen/)
+[![mlx-gen-jzg](https://img.shields.io/pypi/v/mlx-gen-jzg?label=mlx-gen-jzg&logo=pypi&logoColor=white)](https://pypi.org/project/mlx-gen-jzg/)
 [![MLX](https://img.shields.io/pypi/v/mlx?label=MLX&logo=pypi&logoColor=white)](https://pypi.org/project/mlx/)
 [![CI](https://github.com/lpalbou/mlx-gen/actions/workflows/tests.yml/badge.svg)](https://github.com/lpalbou/mlx-gen/actions/workflows/tests.yml)
 

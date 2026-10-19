@@ -98,6 +98,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exist here: the omitted-`--model` default is applied through `default_inference_steps`, and the
   config resolves through `ModelConfig.from_name`. Behaviour is otherwise unchanged.
 
+## [0.1.0] - 2026-10-19
+
+### Changed
+
+- Publish this fork to PyPI as `mlx-gen-jzg` `0.1.0`. The upstream package name `mlx-gen` stays with [lpalbou/mlx-gen](https://github.com/lpalbou/mlx-gen).
+
 ## [0.38.0] - 2026-09-21
 
 MLX 0.32.x is now supported: `mlx>=0.27.0,<0.33.0` on darwin and `mlx[cuda13]>=0.30.3,<0.33.0` on

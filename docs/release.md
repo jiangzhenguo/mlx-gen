@@ -6,8 +6,8 @@ MLX-Gen publishes Python distributions to PyPI and attaches the same distributio
 
 PyPI trusted publishing must be configured for:
 
-- PyPI project: `mlx-gen`
-- GitHub repository: `lpalbou/mlx-gen`
+- PyPI project: `mlx-gen-jzg`
+- GitHub repository: `jiangzhenguo/mlx-gen`
 - Workflow filename: `release.yml`
 - GitHub environment: `pypi`
 

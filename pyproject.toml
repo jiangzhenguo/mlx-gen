@@ -13,10 +13,10 @@ source-exclude = [
 ]
 
 [project]
-name = "mlx-gen"
-version = "0.38.0"
+name = "mlx-gen-jzg"
+version = "0.1.0"
 description = "Generative image and video model runtimes for MLX."
-readme = "README.md"
+readme = "README.zh-CN.md"
 keywords = ["flux", "ai", "ml", "transformers", "mlx", "huggingface", "apple-silicon", "diffusers", "qwen", "qwen-image", "seedvr2", "z-image"]
 authors = [{ name = "Filip Strand", email = "strand.filip@gmail.com" }]
 maintainers = [{ name = "AbstractVision" }]
@@ -81,7 +81,7 @@ release = [
 ]
 
 [project.urls]
-homepage = "https://github.com/lpalbou/mlx-gen"
+homepage = "https://github.com/jiangzhenguo/mlx-gen"
 upstream = "https://github.com/filipstrand/mflux"
 
 [project.scripts]

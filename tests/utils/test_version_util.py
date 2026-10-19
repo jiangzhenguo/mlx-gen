@@ -6,14 +6,14 @@ def test_installed_version_checks_mlx_gen_distribution_first(monkeypatch):
 
     def fake_version(distribution_name):
         calls.append(distribution_name)
-        if distribution_name == "mlx-gen":
+        if distribution_name == "mlx-gen-jzg":
             return "1.2.3"
         raise AssertionError("unexpected fallback")
 
     monkeypatch.setattr("mflux.utils.version_util.importlib.metadata.version", fake_version)
 
     assert VersionUtil._get_installed_version() == "1.2.3"
-    assert calls == ["mlx-gen"]
+    assert calls == ["mlx-gen-jzg"]
 
 
 def test_release_date_falls_back_to_packaged_value(monkeypatch):
