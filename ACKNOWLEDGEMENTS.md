@@ -6,6 +6,12 @@ Most credit for the current codebase goes to Filip Strand and the original mflux
 
 Post-fork MLX-Gen changes are maintained by Laurent-Philippe Albou / AbstractVision.
 
+This repository ([jiangzhenguo/mlx-gen](https://github.com/jiangzhenguo/mlx-gen)) is a personal
+fork of [lpalbou/mlx-gen](https://github.com/lpalbou/mlx-gen). Local workflow additions (Qwen-Image-2.1,
+Qwen3-VL caption, CosyVoice 3, and related docs) build on that upstream work; full credit for the
+shared runtime, CLI surface, and model routes remains with the upstream maintainers and the original
+mflux authors.
+
 MLX-Gen depends on [MLX](https://github.com/ml-explore/mlx), Hugging Face Hub,
 Diffusers/Transformers model formats, and the broader open-source Python and Apple Silicon
 ecosystem.

@@ -35,6 +35,44 @@ authoring tool in the [AbstractFramework](https://abstractframework.ai/) ecosyst
 orchestrate generative image/video capabilities exposed through AbstractVision and AbstractCore; the
 same MLX-Gen steps can also be run directly with the command-line examples below.
 
+## 中文简介
+
+MLX-Gen 是面向 **Apple Silicon / MLX** 的本地图像与视频生成运行时：先 `download` / `prepare`
+把模型落到本地，再用统一的 `mlxgen` 命令做文生图、图生图、文生视频、图生视频、超分修复等，
+适合桌面应用和长期本地任务，避免推理时偷偷拉大文件。
+
+本仓库是 [lpalbou/mlx-gen](https://github.com/lpalbou/mlx-gen) 的**个人 fork**，在上游能力之上
+额外维护了若干本地工作流增强（详见下方 [Fork additions](#fork-additions)），日常开发与合并
+只面向本仓库的 [`main`](https://github.com/jiangzhenguo/mlx-gen/tree/main)，不向原仓库提 PR。
+
+相对上游，本 fork 当前主要增加：
+
+- **Qwen-Image-2.1**：文生图、latent 图生图、多参考图编辑
+- **Qwen3-VL caption**：本地图像理解 / 提示词反推（`mlxgen-caption`）
+- **CosyVoice 3**：零样本音色克隆 TTS 与视频旁白配音（`mlxgen tts` / `mlxgen dub`）
+- 角色四视图等实操文档与 MLX 依赖下界调整
+
+本地安装与试用：
+
+```sh
+uv sync
+uv run mlxgen --help
+```
+
+## 致谢
+
+本 fork 建立在开源社区已有工作之上，特别感谢：
+
+- **[lpalbou/mlx-gen](https://github.com/lpalbou/mlx-gen)**（Laurent-Philippe Albou / AbstractVision）：
+  本仓库直接 fork 自该项目，统一的 `mlxgen` 命令面、模型准备流程、量化策略与大量图像/视频路由
+  均来自上游维护；没有这份基础，就不会有当前的本地工作流扩展。
+- **[mflux](https://github.com/filipstrand/mflux)**（Filip Strand 与贡献者）：
+  上游 MLX-Gen 本身 fork 自 mflux，核心 MLX 生成栈与大量模型适配工作应归功于原作者。
+- **[MLX](https://github.com/ml-explore/mlx)**、Hugging Face Hub，以及 Qwen、Wan、Black Forest Labs
+  等模型社区：提供了 Apple Silicon 上的运行时与模型权重生态。
+
+更完整的上游与模型归属说明见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。
+
 ## Fork additions
 
 Relative to upstream [lpalbou/mlx-gen](https://github.com/lpalbou/mlx-gen) `main` (0.38.0), this
