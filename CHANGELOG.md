@@ -111,6 +111,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than merely slow to backtrack. Requirement and pin now agree on `0.32.4` (cu13 extra on
   Linux, plain MLX on macOS), which is what the code was already being tested against.
 - Publish this fork to PyPI as `mlx-gen-jzg` `0.2.0` (previous release: `0.1.0`).
+- **CI and the release gate moved from `macos-14` to `macos-15`.** GitHub retired the
+  macOS 14 runner images on 2026-11-02, so the scheduler refused every `runs-on: macos-14`
+  job ("configuration 'macos-14-arm64-us-default' is not supported") and neither the test
+  band nor the PyPI publish path could start at all.
 - **The parser and weight-loading APIs the 2.1 edit route needs were added, not worked around.**
   Upstream's edit CLI depends on four capabilities MLX-Gen lacked, so they are now first-class
   APIs:
