@@ -14,7 +14,7 @@ source-exclude = [
 
 [project]
 name = "mlx-gen-jzg"
-version = "0.1.0"
+version = "0.2.0"
 description = "Generative image and video model runtimes for MLX."
 readme = "README.zh-CN.md"
 keywords = ["flux", "ai", "ml", "transformers", "mlx", "huggingface", "apple-silicon", "diffusers", "qwen", "qwen-image", "seedvr2", "z-image"]
@@ -28,8 +28,11 @@ dependencies = [
     "fonttools>=4.60.2",
     "huggingface-hub>=1.1.6,<2.0",
     "hf-transfer>=0.1.9,<1.0",
-    "mlx>=0.32.3,<0.33.0; sys_platform=='darwin'",
-    "mlx[cuda13]>=0.30.3,<0.33.0; sys_platform=='linux'",
+    # MLX-native speech inference (Qwen3-TTS VoiceDesign). Pure MLX, so it does
+    # not drag in a second torch stack like the CosyVoice3 worker does.
+    "mlx-audio>=0.6.4",
+    "mlx>=0.32.4,<0.33.0; sys_platform=='darwin'",
+    "mlx[cuda13]>=0.32.4,<0.33.0; sys_platform=='linux'",
     "numpy>=2.0.1,<3.0",
     "opencv-python>=4.10.0,<5.0",
     "piexif>=1.1.3,<2.0",
@@ -71,8 +74,8 @@ dev = [
     "matplotlib>3.10,<4.0",
     "pytest>=8.3.0,<9.0",
     "pytest-timer>=1.0,<2.0",
-    "mlx==0.32.3; sys_platform=='darwin'",
-    "mlx[cuda13]==0.30.3; sys_platform=='linux'",
+    "mlx==0.32.4; sys_platform=='darwin'",
+    "mlx[cuda13]==0.32.4; sys_platform=='linux'",
     "twine>=6.1.0,<7.0",
     "accelerate>=1.14.0",
 ]
@@ -120,6 +123,8 @@ mflux-inspire-fibo = "mflux.models.fibo_vlm.cli.fibo_inspire:main"
 mlxgen-caption = "mflux.models.qwen3_vl_caption.cli.caption:main"
 mlxgen-tts = "mflux.models.cosyvoice3.cli.tts:main"
 mlxgen-dub = "mflux.models.cosyvoice3.cli.dub:main"
+mlxgen-music = "mflux.models.ace_step.cli.music:main"
+mlxgen-voice-design = "mflux.models.qwen3_tts_voice.cli.voice_design:main"
 mflux-caption = "mflux.models.qwen3_vl_caption.cli.caption:main"
 mflux-concept = "mflux.models.flux.cli.flux_concept:main"
 mflux-concept-from-image = "mflux.models.flux.cli.flux_concept_from_image:main"

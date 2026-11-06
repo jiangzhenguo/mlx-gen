@@ -61,7 +61,6 @@ def main() -> int:
 
         import numpy as np
         import torch
-
         from cosyvoice.cli.cosyvoice import AutoModel
 
         with open(args.text_file, encoding="utf-8") as text_file:
@@ -74,6 +73,14 @@ def main() -> int:
         torch.manual_seed(seed)
 
         load_start = time.time()
+        # wetext's Normalizer downloads its ITN model from ModelScope on first use.
+        # Point the cache inside the prepared package so the download lands with the
+        # model instead of the user's home directory (which may be read-only).
+        package_dir = os.path.dirname(os.path.abspath(args.model_dir))
+        modelscope_home = os.path.join(package_dir, "cache", "modelscope")
+        os.environ.setdefault("MODELSCOPE_HOME", modelscope_home)
+        os.environ.setdefault("MODELSCOPE_CACHE", modelscope_home)
+        os.makedirs(modelscope_home, exist_ok=True)
         model = AutoModel(model_dir=args.model_dir)
         _emit(
             command,

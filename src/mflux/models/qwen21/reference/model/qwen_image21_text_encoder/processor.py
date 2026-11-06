@@ -1,10 +1,14 @@
 from pathlib import Path
 
-from transformers.models.qwen2_vl.image_processing_pil_qwen2_vl import Qwen2VLImageProcessorPil
-
 
 class QwenImage21Processor:
     def __init__(self, path: Path, tokenizer):
+        # Deferred: transformers (and torch through it) must stay off the CLI entry-point
+        # import path, so the processor class is only resolved when a model is actually built.
+        # Contract: tests/common/test_denoise_dtype_contract.py::
+        # test_cli_entry_points_do_not_import_transformers_at_module_scope.
+        from transformers.models.qwen2_vl.image_processing_pil_qwen2_vl import Qwen2VLImageProcessorPil
+
         self.tokenizer = tokenizer
         self.image_processor = Qwen2VLImageProcessorPil.from_pretrained(str(path), local_files_only=True)
 

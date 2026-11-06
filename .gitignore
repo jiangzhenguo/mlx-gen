@@ -51,3 +51,6 @@ site/
 out/
 .probe-venv/
 .uv-cache/
+
+# Nested clone of this repo kept inside the tree (2 GB); never commit it
+mlx-gen/

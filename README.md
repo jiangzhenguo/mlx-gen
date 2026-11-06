@@ -47,8 +47,9 @@ fork adds:
 | **Qwen-Image-2.1** txt2img, latent img2img, and reference edit (up to 10 refs, native RGBA, prefix KV cache) | `mlxgen generate --model qwen-image-2.1`, `mlxgen-generate-qwen-2.1`, `mlxgen-generate-qwen-2.1-edit` | [docs/qwen-image-21.md](docs/qwen-image-21.md), [docs/qwen-image-21-editing.md](docs/qwen-image-21-editing.md) |
 | **Qwen3-VL caption** (image → text / 提示词反推) with multimodal RoPE + deepstack; optional `mlx-vlm` parity backend | `mlxgen-caption` / `mflux-caption` | [docs/qwen3-vl-caption.md](docs/qwen3-vl-caption.md) |
 | **CosyVoice 3** zero-shot TTS + video narration mux (isolated Python 3.11 worker venv; HF / ModelScope mirrors) | `mlxgen tts`, `mlxgen dub`, `mlxgen prepare --model cosyvoice3` | [docs/cosyvoice3-tts.md](docs/cosyvoice3-tts.md) |
+| **Qwen3-TTS VoiceDesign** — design a voice from a text description, no reference clip (MLX-native, 10 languages) | `mlxgen voice-design`, `mlxgen dub --voice-design`, `mlxgen prepare --model qwen3-tts-voice-design` | [docs/qwen3-tts-voice-design.md](docs/qwen3-tts-voice-design.md) |
 | Character **turnaround / 四视图** ops cookbook (canvas vs edit vs upscale, per-route size contracts, measured recipes) | — | [docs/character-four-view-operations.md](docs/character-four-view-operations.md) |
-| MLX floor raised to **0.32.3** so Qwen3-VL reference encoding does not silently roll back | `pyproject.toml` | — |
+| MLX floor raised to **0.32.4** so Qwen3-VL reference encoding does not silently roll back, and to match `mlx-audio`'s exact pin | `pyproject.toml` | — |
 
 Install / run this fork from a local checkout (upstream PyPI package does not include the rows above):
 
@@ -114,6 +115,12 @@ The main capabilities are:
   prepare an isolated package with `mlxgen prepare --model cosyvoice3`, then synthesize WAV from a
   reference clip or replace/mix narration onto an existing MP4 (typically a MiniMax-H3 output) —
   see `docs/cosyvoice3-tts.md`;
+- Qwen3-TTS **voice design** (`mlxgen voice-design`): describe a voice in plain language
+  ("a warm female voice in her thirties, speaking slowly") and the model speaks with it — no
+  reference audio needed. MLX-native (no second torch stack), 10 languages, and
+  `mlxgen dub --voice-design ...` narrates an existing MP4 with a designed voice. Named
+  **voice profiles** (`--voice-profile narrator-male`) pin one description to one narrator across
+  a whole series — see `docs/qwen3-tts-voice-design.md`;
 - ByteDance Bernini-R 1.3B renderer support (`bernini-r-1.3b`): generate video from one to eight
   ordered ordinary reference images, edit one source video with those references, or run
   source-only prompt-guided video editing through the unified CLI and Python runtime. Download
@@ -480,6 +487,7 @@ progress callbacks make long runs observable.
 - [Qwen-Image-2.1](docs/qwen-image-21.md) / [editing](docs/qwen-image-21-editing.md): fork-added second-generation Qwen image routes (txt2img, latent i2i, reference edit).
 - [Qwen3-VL caption](docs/qwen3-vl-caption.md): fork-added image-to-text / prompt reverse with local MLX Qwen3-VL checkpoints.
 - [CosyVoice 3 TTS and dubbing](docs/cosyvoice3-tts.md): fork-added `mlxgen tts` / `mlxgen dub` and the isolated prepare package.
+- [Qwen3-TTS voice design](docs/qwen3-tts-voice-design.md): fork-added `mlxgen voice-design` — text description to timbre, MLX-native, plus the `--voice-design` narrator for `mlxgen dub`.
 - [Character four-view ops](docs/character-four-view-operations.md): measured turnaround-sheet recipes and per-route size contracts.
 - [Image edit modes](docs/image-edit-modes.md): what latent img2img, edit-reference, multi-reference, generative reframe, and outpaint mean in practice, with examples.
 - [Wan video](docs/wan-video.md): practical Wan2.2 T2V/I2V sizing, plain and masked prompt-guided A14B video-to-video with included proof artifacts, the natively ported Wan2.1-VACE-1.3B route (reference-image object injection and learned mask conditioning), a measured motion-fidelity ladder (strength vs gesture preservation), broader A14B target size families, and 5-second M5 Max comparison clips.

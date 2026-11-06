@@ -54,7 +54,18 @@ def main() -> None:
         _top_level_parser().print_help()
         return
 
-    if argv and argv[0] in {"download", "prepare", "capabilities", "validation", "upscale", "tts", "dub"}:
+    if argv and argv[0] in {
+        "download",
+        "prepare",
+        "capabilities",
+        "validation",
+        "upscale",
+        "tts",
+        "dub",
+        "music",
+        "voice-design",
+        "voice_design",
+    }:
         _run_model_command(argv)
         return
 
@@ -272,7 +283,7 @@ def _normalize_command(argv: list[str]) -> list[str]:
 def _top_level_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mlxgen",
-        usage="mlxgen [generate|upscale|capabilities|validation|download|prepare|tts|dub] ...",
+        usage="mlxgen [generate|upscale|capabilities|validation|download|prepare|tts|dub|music|voice-design] ...",
         description=(
             f"{VersionUtil.format_cli_release_label()}\n\n"
             "Prepare local model assets and generate images or videos with MLX-Gen."
@@ -283,6 +294,8 @@ def _top_level_parser() -> argparse.ArgumentParser:
             "  upscale     Restore or upscale images and videos with SeedVR2 or SwiftVR.\n"
             "  tts         Synthesize speech with CosyVoice3 (voice cloning, instructed style).\n"
             "  dub         Narrate an existing video (e.g. a MiniMax-H3 clip) with CosyVoice3 speech.\n"
+            "  music       Generate a song with ACE-Step 1.5 (text-to-music, optional lyrics).\n"
+            "  voice-design Design a voice from a text description and speak with it (Qwen3-TTS).\n"
             "  capabilities Inspect model generation tasks, modes, and option support.\n"
             "  validation   Inspect release-validation evidence for exact model/package rows.\n"
             "  download     Explicitly download a model snapshot into the Hugging Face cache.\n"
@@ -293,6 +306,8 @@ def _top_level_parser() -> argparse.ArgumentParser:
             "  mlxgen generate --model wan2.2-ti2v-5b --prompt 'A city timelapse'\n"
             "  mlxgen tts --ref-audio voice.wav --ref-text '参考音频的文字' --text '你好，世界'\n"
             "  mlxgen dub --video-path video.mp4 --ref-audio voice.wav --text '旁白内容' --mode mix\n"
+            "  mlxgen music --prompt '一首中文流行歌曲，钢琴伴奏，副歌激昂' --output song.flac\n"
+            "  mlxgen voice-design --voice 'a warm female voice in her thirties' --text '你好，世界'\n"
             "  mlxgen upscale --model seedvr2-3b --image-path input.png --resolution 2x --output upscaled.png\n"
             "  mlxgen capabilities --model flux2-klein-4b\n"
             "  mlxgen capabilities --model swiftvr\n"
@@ -300,6 +315,7 @@ def _top_level_parser() -> argparse.ArgumentParser:
             "  mlxgen download --model Qwen/Qwen-Image\n"
             "  mlxgen prepare --model Qwen/Qwen-Image --path ./models/qwen-image-8bit --quantize 8\n"
             "  mlxgen prepare --model cosyvoice3\n"
+            "  mlxgen prepare --model ace-step\n"
             "\n"
             "Use 'mlxgen <command> --help' for command-specific options."
         ),
@@ -504,6 +520,12 @@ def _run_model_command(argv: list[str]) -> None:
     if command == "dub":
         _run_audio_command("mflux.models.cosyvoice3.cli.dub", "mlxgen dub", argv[1:])
         return
+    if command == "music":
+        _run_audio_command("mflux.models.ace_step.cli.music", "mlxgen music", argv[1:])
+        return
+    if command in {"voice-design", "voice_design"}:
+        _run_audio_command("mflux.models.qwen3_tts_voice.cli.voice_design", "mlxgen voice-design", argv[1:])
+        return
     if command == "download":
         _download_model(argv[1:])
         return
@@ -525,7 +547,7 @@ def _upscale_image(argv: list[str]) -> None:
 
 
 def _run_audio_command(module_path: str, prog: str, argv: list[str]) -> None:
-    """Dispatch `mlxgen tts` / `mlxgen dub` to the CosyVoice3 audio backends.
+    """Dispatch `mlxgen tts` / `mlxgen dub` / `mlxgen music` to the audio backends.
 
     Deferred import, mirroring _download_model: the audio stack must stay off the
     plain router import path.
@@ -659,6 +681,13 @@ def _download_model(argv: list[str]) -> None:
         parser.error(
             "CosyVoice3 is a packaged TTS backend: weights alone are not runnable. "
             "Use `mlxgen prepare --model cosyvoice3` to build the full package "
+            "(weights + inference code + isolated environment)."
+        )
+
+    if _is_ace_step_alias(args.model):
+        parser.error(
+            "ACE-Step 1.5 is a packaged music backend: weights alone are not runnable. "
+            "Use `mlxgen prepare --model ace-step` to build the full package "
             "(weights + inference code + isolated environment)."
         )
 
@@ -872,6 +901,12 @@ def _prepare_model(argv: list[str]) -> None:
     if _is_cosyvoice3_alias(_option_value(argv, "--model") or _option_value(argv, "-m")):
         _prepare_cosyvoice3(argv)
         return
+    if _is_qwen3_tts_voice_alias(_option_value(argv, "--model") or _option_value(argv, "-m")):
+        _prepare_qwen3_tts_voice(argv)
+        return
+    if _is_ace_step_alias(_option_value(argv, "--model") or _option_value(argv, "-m")):
+        _prepare_ace_step(argv)
+        return
     from mflux.models.common.cli.save import main as save_main
 
     previous_argv = sys.argv
@@ -887,6 +922,18 @@ def _is_cosyvoice3_alias(model: str | None) -> bool:
     from mflux.models.cosyvoice3.constants import is_cosyvoice3_alias
 
     return is_cosyvoice3_alias(model)
+
+
+def _is_ace_step_alias(model: str | None) -> bool:
+    from mflux.models.ace_step.constants import is_ace_step_alias
+
+    return is_ace_step_alias(model)
+
+
+def _is_qwen3_tts_voice_alias(model: str | None) -> bool:
+    from mflux.models.qwen3_tts_voice.constants import is_qwen3_tts_voice_alias
+
+    return is_qwen3_tts_voice_alias(model)
 
 
 def _prepare_cosyvoice3(argv: list[str]) -> None:
@@ -930,6 +977,100 @@ def _prepare_cosyvoice3(argv: list[str]) -> None:
         prepare_package(
             args.path or constants.default_package_dir(),
             with_rl=bool(args.with_rl),
+            force=bool(args.force),
+            json_events=bool(args.json_events),
+            source=args.source,
+        )
+
+
+def _prepare_qwen3_tts_voice(argv: list[str]) -> None:
+    """Prepare the Qwen3-TTS VoiceDesign package (MLX weights + manifest)."""
+    from mflux.models.qwen3_tts_voice import constants
+
+    parser = argparse.ArgumentParser(
+        prog="mlxgen prepare",
+        description=(
+            "Prepare a Qwen3-TTS VoiceDesign package: the MLX weights of the voice-design model. "
+            "Afterwards `mlxgen voice-design` and `mlxgen dub --voice-design ...` run fully offline."
+        ),
+    )
+    parser.add_argument("--model", "-m", required=True, help="qwen3-tts-voice-design")
+    parser.add_argument(
+        "--path",
+        type=Path,
+        default=None,
+        help=f"Package directory (default: {constants.default_package_dir()}).",
+    )
+    parser.add_argument("--force", action="store_true", help="Delete an existing package at --path first.")
+    parser.add_argument(
+        "--source",
+        choices=["auto", "hf", "modelscope"],
+        default="auto",
+        help="Weight source: Hugging Face, the ModelScope mirror, or auto (HF with ModelScope fallback).",
+    )
+    parser.add_argument("--json-events", action="store_true", help="Emit machine-readable runtime events on stdout.")
+    args = parser.parse_args(argv)
+    if not _is_qwen3_tts_voice_alias(args.model):
+        parser.error(f"--model must be qwen3-tts-voice-design for this prepare flow. Got: {args.model!r}")
+
+    # Imported after the parse so `--help` and argument errors never depend on the
+    # (separately versioned) prepare module being importable.
+    from mflux.models.qwen3_tts_voice.prepare import prepare_package
+
+    with allow_downloads():
+        prepare_package(
+            args.path or constants.default_package_dir(),
+            force=bool(args.force),
+            json_events=bool(args.json_events),
+            source=args.source,
+        )
+
+
+def _prepare_ace_step(argv: list[str]) -> None:
+    """Prepare the self-contained ACE-Step 1.5 package (weights + code + isolated venv)."""
+    from mflux.models.ace_step import constants
+
+    parser = argparse.ArgumentParser(
+        prog="mlxgen prepare",
+        description=(
+            "Prepare a self-contained ACE-Step 1.5 music package: official weights, official "
+            "inference code, and an isolated worker environment. Afterwards `mlxgen music` runs "
+            "fully offline."
+        ),
+    )
+    parser.add_argument("--model", "-m", required=True, help="ace-step")
+    parser.add_argument(
+        "--path",
+        type=Path,
+        default=None,
+        help=f"Package directory (default: {constants.default_package_dir()}).",
+    )
+    parser.add_argument(
+        "--no-lm",
+        action="store_true",
+        help="Skip the planner LM weights (~3.7 GB). The LM writes lyrics and the song blueprint, "
+        "so --lyrics is then required unless the track is instrumental.",
+    )
+    parser.add_argument("--force", action="store_true", help="Delete an existing package at --path first.")
+    parser.add_argument(
+        "--source",
+        choices=["auto", "hf", "modelscope"],
+        default="auto",
+        help="Weight source: Hugging Face, the ModelScope mirror, or auto (HF with ModelScope fallback).",
+    )
+    parser.add_argument("--json-events", action="store_true", help="Emit machine-readable runtime events on stdout.")
+    args = parser.parse_args(argv)
+    if not _is_ace_step_alias(args.model):
+        parser.error(f"--model must be ace-step for this prepare flow. Got: {args.model!r}")
+
+    # Imported after the parse so `--help` and argument errors never depend on the
+    # (separately versioned) prepare module being importable.
+    from mflux.models.ace_step.prepare import prepare_package
+
+    with allow_downloads():
+        prepare_package(
+            args.path or constants.default_package_dir(),
+            with_lm=not bool(args.no_lm),
             force=bool(args.force),
             json_events=bool(args.json_events),
             source=args.source,

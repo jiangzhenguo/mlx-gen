@@ -7,7 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-06
+
 ### Added
+
+- **Qwen3-TTS voice design (`mlxgen voice-design`).** Text-to-timbre synthesis: the voice is
+  described in plain language ("a warm female voice in her thirties, speaking slowly") instead of
+  being cloned from a reference clip, which is what the existing CosyVoice 3 path requires. Built on
+  `mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16` (1.7B talker + 12 Hz speech tokenizer, 24 kHz
+  output, 10 languages) and driven through `mlx-audio`, so the route is MLX-native and needs **no
+  isolated torch environment** — the synthesis worker runs as a subprocess of the current
+  interpreter, and the CosyVoice 3 `transformers==4.51.3` pin cannot interfere with it.
+  `mlxgen prepare --model qwen3-tts-voice-design` builds the package; the weight download is
+  chunked (8 MB, resumable, per-chunk state on disk) and fetched by several connections at once,
+  because a single stream on a throttled link gets a fraction of the link's bandwidth (measured:
+  80 KB/s on one connection versus 1.1 MB/s with 20 connections). Every mirror is probed once,
+  since the Hugging Face CDN path answers range requests with the whole file while the ModelScope
+  mirror answers them correctly — mirrors that ignore ranges are dropped instead of silently
+  re-fetching 3.8 GB per chunk. `mlxgen dub` keeps CosyVoice 3 as its default narrator and takes
+  an optional `--voice-design` description to narrate an existing MP4 with a designed voice; the
+  H3 chaining contract is unchanged and `mlxgen dub` still never calls the video model.
+  Verified end to end on a 64 GB Apple Silicon machine: model load 2.0–3.1 s, synthesis RTF 0.90
+  (7.44 s of English) and 1.00 (6.56 s of Chinese), 24 kHz mono output, Whisper `tiny` transcribes
+  the Chinese and English samples verbatim, and the description moves the timbre (median F0 198 Hz
+  for a female description versus 86 Hz for a deep male one).
+- **Named voice profiles (`--voice-profile`).** A voice description is a long sentence a project has
+  to keep stable — episode 3's narrator has to sound like episode 1's — and a moved comma moves the
+  timbre with it. A profile gives that sentence a name in a small JSON file
+  (`mlxgen-voice-profiles.json`, `$MLXGEN_VOICE_PROFILES`, or `~/.config/mlxgen/voice-profiles.json`),
+  with optional `language` / `temperature` / `seed` fields that a command-line value always
+  overrides. Six starters ship built in; `mlxgen voice-design --list-voice-profiles` prints the
+  resolved set and the metadata sidecar records the profile name and its source. Both
+  `mlxgen voice-design` and `mlxgen dub --voice-profile` accept it.
+- **`tools/compose_voice.py` — multi-segment audio.** A single generation with a long run of
+  "嗯……啊……" drifts into a babble loop and swallows the words at the end, so longer audio is
+  now assembled from separately synthesized segments: each one gets its own description, its own
+  gain and its own gap, the silence is trimmed and the result is peak-normalised. The manifest
+  format and the measured result are documented in `docs/qwen3-tts-voice-design.md`.
+
+- **ACE-Step 1.5 music generation (`mlxgen music`).** Text-to-music with vocals: a prompt
+  ("一首中文流行歌曲，钢琴伴奏，副歌激昂") plus optional lyrics renders a finished track, and
+  `--instrumental` asks for one without a vocal line. The official stack pins
+  `transformers>=4.51,<4.58` and `torch>=2.9.1`, which cannot share MLX-Gen's own environment
+  (`transformers>=5`), so `mlxgen prepare --model ace-step` builds a self-contained package
+  (weights, pinned upstream runtime tree, isolated Python 3.11 venv) and `mlxgen music` spawns its
+  worker, which speaks the same JSONL runtime-event contract as `mlxgen generate`; MLX-Gen's own
+  environment never loads torch or the ACE-Step code. The planner LM writes the lyrics and song
+  blueprint by default, `--no-use-lm` hands lyrics control to the caller, and `--no-lm` skips the
+  optional 3.7 GB planner weights. Also exposed as `mlxgen-music` for scripts. See
+  `docs/ace-step.md`.
 
 - **Qwen-Image-2.1 text-to-image (`qwen-image-2.1`).** A second-generation Qwen Image route: a
   single-stream block-causal 7.1B transformer (SwiGLU MLP, one global `modulation` pair instead of
@@ -56,6 +104,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **MLX floor raised to `0.32.4` and the `dev` pins realigned to it.** `mlx-audio 0.6.4` — the
+  MLX-native engine behind voice design — depends on exactly `mlx==0.32.4`, while the base
+  requirement still admitted `0.32.3` and the `dev` extra pinned it exactly, so any
+  `uv sync`/`uv run --extra dev` resolution across the supported Python splits was unsatisfiable
+  rather than merely slow to backtrack. Requirement and pin now agree on `0.32.4` (cu13 extra on
+  Linux, plain MLX on macOS), which is what the code was already being tested against.
+- Publish this fork to PyPI as `mlx-gen-jzg` `0.2.0` (previous release: `0.1.0`).
 - **The parser and weight-loading APIs the 2.1 edit route needs were added, not worked around.**
   Upstream's edit CLI depends on four capabilities MLX-Gen lacked, so they are now first-class
   APIs:

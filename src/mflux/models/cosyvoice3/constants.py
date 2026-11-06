@@ -55,31 +55,41 @@ CODE_PATTERNS = [
     "zero_shot_prompt.wav",
 ]
 
-# Worker venv dependencies. Versions are floors, not pins: the worker only exercises
-# the inference path (no training, no gradio, no TRT/vLLM exports). setuptools<80 is
-# pinned because 80+ removes pkg_resources, which cosyvoice's dataset processor
-# imports transitively. torch is capped <2.8 to match the upstream validated range.
+# Worker venv dependencies.
+#
+# The versions matter — they are the ones the upstream CosyVoice 3 Space pins, and
+# deviating from them breaks the model in ways that are hard to see:
+#   * transformers MUST stay on 4.51.x. On 5.x the Qwen2 backbone silently computes
+#     different attention/mask semantics, the LLM emits garbage speech tokens, and
+#     the audio comes out as unintelligible noise instead of an error.
+#   * numpy MUST stay < 2. onnxruntime 1.18 is compiled against numpy 1.x and
+#     fails to import under numpy 2 ("_ARRAY_API not found").
+#   * wetext MUST be 0.1.x. 0.0.4 downloads its FST models from ModelScope during
+#     Normalizer() construction, which breaks offline use and read-only home dirs.
+#   * setuptools<80 keeps pkg_resources, which cosyvoice's dataset processor imports.
+#   * torch is capped below 2.8: newer releases reorganised torch.mps and break the
+#     map_location path the worker relies on.
 WORKER_REQUIREMENTS = [
     "torch>=2.7,<2.8",
     "torchaudio>=2.7,<2.8",
-    "transformers>=4.51",
-    "hyperpyyaml>=1.2",
-    "ruamel.yaml<0.18",
-    "onnxruntime>=1.18",
-    "openai-whisper",
-    "tiktoken",
-    "inflect",
-    "wetext",
-    "omegaconf",
-    "soundfile",
-    "librosa",
-    "numpy<3",
-    "diffusers",
+    "transformers==4.51.3",
+    "numpy<2",
+    "diffusers==0.29.0",
     "conformer==0.3.2",
     "einops",
     "x-transformers>=2.3.5",
-    "pyarrow",
-    "pyworld",
+    "hyperpyyaml==1.2.2",
+    "ruamel.yaml<0.18",
+    "onnxruntime==1.18.0",
+    "openai-whisper",
+    "tiktoken",
+    "inflect==7.3.1",
+    "wetext==0.1.8",
+    "omegaconf",
+    "soundfile==0.12.1",
+    "librosa==0.10.2",
+    "pyarrow==18.1.0",
+    "pyworld==0.3.4",
     "setuptools<80",
 ]
 

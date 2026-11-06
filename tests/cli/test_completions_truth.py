@@ -21,6 +21,12 @@ EXCLUDED_SCRIPTS = {
     # CosyVoice3 prepare flag lands.
     "mlxgen-tts",
     "mlxgen-dub",
+    # ACE-Step music backend: same shape as the CosyVoice3 ones (subcommand-style,
+    # reached through the `mlxgen` router), so it gets no static completion either.
+    "mlxgen-music",
+    # Qwen3-TTS voice-design backend: same shape (subcommand-style, reached through
+    # the `mlxgen` router), so it gets no static completion either.
+    "mlxgen-voice-design",
 }
 
 

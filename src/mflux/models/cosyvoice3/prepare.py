@@ -20,14 +20,14 @@ from mflux.models.cosyvoice3 import constants
 from mflux.models.cosyvoice3.runner import resolve_package
 
 # The upstream code imports modelscope for a download fallback mlx-gen never uses
-# (the worker always gets a local model dir). The patch keeps the import optional
-# so the worker venv does not need modelscope.
+# (the worker always gets a local model dir). The import is replaced by a stub that
+# only fails when it is actually called: importing modelscope for real is slow and
+# touches ~/.modelscope, which breaks inside sandboxes and read-only home dirs.
 _MODELSCOPE_IMPORT = "from modelscope import snapshot_download"
-_MODELSCOPE_PATCH = """try:
-    from modelscope import snapshot_download
-except ImportError:
-    def snapshot_download(*args, **kwargs):
-        raise RuntimeError('modelscope is not installed; pass a local model_dir')"""
+_MODELSCOPE_PATCH = """def snapshot_download(*args, **kwargs):
+    # mlx-gen patch: the worker always resolves a local model dir, so modelscope is
+    # never needed. Importing it would also create ~/.modelscope as a side effect.
+    raise RuntimeError('modelscope is not installed; pass a local model_dir')"""
 
 # Non-CUDA fixes verified end-to-end on Apple Silicon (CPU inference). Each entry is
 # (file, exact upstream snippet, replacement). All are idempotent and fail loudly at
@@ -37,13 +37,6 @@ _CPU_DEVICE_PATCHES = [
         "cosyvoice/cli/model.py",
         "        self.device = 'cuda'",
         "        # mlx-gen patch: keep the device chosen in __init__ (cuda when available, else cpu).",
-    ),
-    (
-        "cosyvoice/llm/llm.py",
-        "        self.model = Qwen2ForCausalLM.from_pretrained(pretrain_path)",
-        "        # mlx-gen patch: force fp32 so the cosyvoice-owned fp32 embeddings\n"
-        "        # (speech_embedding / llm_embedding) match the backbone's parameter dtype.\n"
-        "        self.model = Qwen2ForCausalLM.from_pretrained(pretrain_path, dtype=torch.float32)",
     ),
     (
         "cosyvoice/flow/flow.py",
@@ -181,7 +174,6 @@ def prepare_package(
         "patches": [
             "modelscope-import-optional",
             "cpu-device-fixes (model/llm/flow/hifigan)",
-            "llm-fp32-dtype",
             "matcha-training-loss-stub-if-unfetchable",
         ],
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -191,7 +183,7 @@ def prepare_package(
     # Validate the finished package through the same gate the runner uses.
     resolve_package(str(path))
     cli_print(f"CosyVoice3 package ready at {path}", json_events=json_events)
-    cli_print(f'Try it: mlxgen tts --ref-audio <voice.wav> --text "你好，世界" --output hello.wav', json_events=json_events)
+    cli_print('Try it: mlxgen tts --ref-audio <voice.wav> --text "你好，世界" --output hello.wav', json_events=json_events)
     return path
 
 
@@ -288,7 +280,7 @@ def _download_weights_modelscope(model_dir: Path, *, patterns: list[str], json_e
                     with target.open(mode) as handle:
                         for chunk in response.iter_content(chunk_size=1024 * 1024):
                             handle.write(chunk)
-            except Exception as exc:
+            except (OSError, requests.RequestException) as exc:
                 cli_print(
                     f"Downloading {name} interrupted ({type(exc).__name__}); retry {attempt}/30...",
                     json_events=json_events,
@@ -310,7 +302,7 @@ def _modelscope_remote_size(url: str) -> int | None:
 
     try:
         response = requests.get(url, headers={"Range": "bytes=0-0"}, stream=True, timeout=(30, 60))
-    except Exception:
+    except (OSError, requests.RequestException):
         return None
     if response.status_code not in {200, 206}:
         return None
@@ -453,16 +445,24 @@ def _install_requirements(python: Path, *, json_events: bool) -> None:
 
 def _retrying(operation, *, what: str, json_events: bool, attempts: int = 8) -> None:
     for attempt in range(1, attempts + 1):
-        try:
-            operation()
+        error = _run_once(operation)
+        if error is None:
             return
-        except Exception as exc:
-            if attempt == attempts:
-                raise
-            delay = min(30, 5 * attempt)
-            cli_print(
-                f"Downloading {what} failed ({type(exc).__name__}: {str(exc)[:120]}); "
-                f"retry {attempt}/{attempts - 1} in {delay}s...",
-                json_events=json_events,
-            )
-            time.sleep(delay)
+        if attempt == attempts:
+            raise error
+        delay = min(30, 5 * attempt)
+        cli_print(
+            f"Downloading {what} failed ({type(error).__name__}: {str(error)[:120]}); "
+            f"retry {attempt}/{attempts - 1} in {delay}s...",
+            json_events=json_events,
+        )
+        time.sleep(delay)
+
+
+def _run_once(operation) -> Exception | None:
+    """Run one attempt and return the failure, if any, so the retry loop stays outside the try."""
+    try:
+        operation()
+    except Exception as exc:  # noqa: BLE001 - every failure is retried and the last one is re-raised
+        return exc
+    return None

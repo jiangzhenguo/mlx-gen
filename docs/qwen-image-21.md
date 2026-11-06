@@ -236,6 +236,87 @@ edited = model.generate_image(
 edited.save("panda-scarf.png")
 ```
 
+## Third-party prepared packages (Turbo, community conversions)
+
+Community packages such as `vanch007/Qwen-Image-2.1-Turbo-Heretic-mlx-bf16` are written by
+`mflux-save` from a *different* module tree, and every shard carries `mflux_version` /
+`quantization_level` metadata. That metadata routes loading through the prepared-package fast path,
+which loads the module tree verbatim and skips the HuggingFace key mapping. Because
+`Module.update(..., strict=False)` ignores keys it does not recognise, such a package loads
+**without any error and with almost no weights applied** — typically the transformer loses
+`modulation`, the text encoder loses all 399 tensors and the VAE loses its conv/norm names, so
+generation returns noise. Always check first:
+
+```sh
+.venv/bin/python tools/verify_qwen21_package.py ~/ai/models/<package>              # text-to-image
+.venv/bin/python tools/verify_qwen21_package.py ~/ai/models/<package> --route edit # reference editing
+```
+
+It resolves the same keys loading would use and reports per-component `missing`/`unexpected`
+counts. For reference, the Heretic package above reports `missing=398` on the text encoder and
+`missing=218/226` on the VAE as shipped.
+
+Its DiT and VAE are bit-identical to the official `Qwen/Qwen-Image-2.1-Turbo` checkpoint, so only
+the text encoder needs converting. The two routes want different things from that encoder, and one
+converted directory serves both:
+
+| Route | What it reads | Where it comes from |
+| --- | --- | --- |
+| `qwen21.text` | `model.language_model.*` via the weight mapping | rewritten from `language_model.*` |
+| `qwen21.edit` | strips `model.` and loads the tree verbatim, **including the Qwen3-VL vision tower** | same keys + `model.visual.*` |
+
+The edit route additionally reads component geometry from `<component>/config.json`, needs the
+vision patch-embedding conv in HF `[out, in, T, H, W]` order (it transposes the tensor itself), and
+reads `text_config["rope_scaling"]` + `rope_theta` rather than transformers-5.x `rope_parameters`.
+Community exports are written the other way round on all three counts, so dropping the vision tower
+or skipping the config normalisation is what makes editing fail with a strict
+`checkpoint mismatch` error.
+
+```sh
+# 1. fetch only the encoder (~17.5 GB)
+.venv/bin/python -c "
+from huggingface_hub import snapshot_download
+snapshot_download('vanch007/Qwen-Image-2.1-Turbo-Heretic-mlx-bf16',
+                  allow_patterns=['text_encoder/*'], local_dir='$HOME/ai/models/vanch-heretic')"
+
+# 2. rewrite the keys and config for both routes, keeping language_model.* + visual.* and
+#    stripping the mflux metadata so the HF paths apply again
+.venv/bin/python tools/convert_heretic_text_encoder.py \
+  --src $HOME/ai/models/vanch-heretic/text_encoder \
+  --dst $HOME/ai/models/Qwen-Image-2.1-Turbo-Heretic/text_encoder
+
+# 3. assemble: official Turbo DiT + official VAE + official tokenizer, keeping sample_sigmas
+cp $HOME/ai/models/Qwen-Image-2.1-Turbo/model_index.json $HOME/ai/models/Qwen-Image-2.1-Turbo-Heretic/
+ln -s $HOME/ai/models/Qwen-Image-2.1-Turbo/transformer $HOME/ai/models/Qwen-Image-2.1-Turbo-Heretic/transformer
+ln -s $HOME/ai/models/Qwen-Image-2.1-bf16/vae           $HOME/ai/models/Qwen-Image-2.1-Turbo-Heretic/vae
+ln -s $HOME/ai/models/Qwen-Image-2.1-bf16/processor     $HOME/ai/models/Qwen-Image-2.1-Turbo-Heretic/processor
+
+# 4. verify both routes, then run
+.venv/bin/python tools/verify_qwen21_package.py $HOME/ai/models/Qwen-Image-2.1-Turbo-Heretic
+.venv/bin/python tools/verify_qwen21_package.py $HOME/ai/models/Qwen-Image-2.1-Turbo-Heretic --route edit
+
+.venv/bin/mflux-generate-qwen-2.1 --model $HOME/ai/models/Qwen-Image-2.1-Turbo-Heretic \
+  --prompt "..." --width 832 --height 1248 --steps 8
+
+.venv/bin/mflux-generate-qwen-2.1-edit --model $HOME/ai/models/Qwen-Image-2.1-Turbo-Heretic \
+  --image-paths ref1.png --prompt "..." --steps 8 --guidance 1.0 \
+  --output-resolution 1024 --output edited.png
+```
+
+Notes on running it:
+
+- Keep the default `--scheduler linear`. The upstream model card's `--scheduler qwen_turbo` does
+  not exist here; the checkpoint's `sample_sigmas` supplies the fixed 8-point schedule and locks
+  the step count to 8, which is exactly what that scheduler did.
+- `--model <local dir>` is enough: the path both selects the config and sets `model_path`.
+- Measured on M5 Pro / 64 GB: 16 GB encoder (text + vision), 832x1248 at 8 steps. Text-to-image is
+  30 s denoising / 42 s wall. Single-reference editing is 83 s denoising / 113 s wall, of which the
+  first step is ~51 s (vision encode + one-time compile); two references cost ~1m31s in total.
+- A package that mixes in another encoder still needs the official DiT and VAE present as real
+  files or symlinks; symlinked component directories are resolved normally.
+- The edit route validates strictly, so a layout mismatch fails loudly here instead of returning
+  noise — but only after loading the components. `--route edit` catches it first.
+
 ## Limitations
 
 - **No LoRA and no training** for this model.

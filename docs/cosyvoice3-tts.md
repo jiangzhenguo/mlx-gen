@@ -10,7 +10,7 @@
 
 CosyVoice 3's official inference code is a separate package on its own Python 3.11 PyTorch stack:
 
-- `transformers>=4.51` for the Qwen2-derived speech-token LLM (mlx-gen itself pins `transformers>=5.0` for the image/video models, so the two would clash).
+- `transformers==4.51.3` for the Qwen2-derived speech-token LLM (mlx-gen itself pins `transformers>=5.0` for the image/video models, so the two would clash — and 5.x would additionally break CosyVoice 3's inference, see the version notes below).
 - `torchaudio`, `onnxruntime`, `openai-whisper`, `tiktoken`, `inflect`, `wetext` for the speech tokenizer, ONNX decoder, English number normalization, and Chinese text normalization.
 
 `mlxgen prepare --model cosyvoice3` therefore builds a self-contained package at the path you choose:
@@ -36,6 +36,28 @@ mlxgen prepare --model cosyvoice3         # default: $MFLUX_CACHE_DIR/cosyvoice3
 The first run downloads the weights and inference code, creates the isolated venv, and installs the worker requirements. By default the download tries the Hugging Face mirror first and falls back to the ModelScope mirror (CosyVoice 3 is mirrored at `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` on both, and the ModelScope resolve endpoint answers Range requests so an interrupted large file resumes from where it stopped). Use `--source hf`, `--source modelscope`, or `--source auto` to control the choice; `--with-rl` also downloads the RL-tuned LLM variant (`llm.rl.pt`, +2 GB); `--force` recreates an existing package.
 
 After the first successful prepare, every `mlxgen tts` and `mlxgen dub` invocation runs fully offline.
+
+## `--ref-text` must be the reference clip's real transcript
+
+This is the one mistake that produces *plausible-looking but unintelligible* audio instead of an error, so it is worth stating explicitly.
+
+`--ref-text` is the transcript of **the audio in `--ref-audio`** — not the sentence you want synthesized. CosyVoice 3 conditions the speech-token LLM on `sos → [reference transcript + target text] → task_id → reference speech tokens`; when the transcript does not match the clip, the model is asked to continue audio that says something else. It then never reaches the end of its utterance: the LLM keeps sampling until it hits the `max_token_text_ratio × text length` cap, so the result is roughly 20× too long, drifts, and is unusable.
+
+The symptom is a clip whose length is pinned to a round number for short inputs (3 characters → 60 tokens → 2.8 s) instead of the ~1 s you expect.
+
+Worked example using the reference clip that ships with the official demo space:
+
+```bash
+mlxgen tts \
+  --ref-audio zero_shot_prompt.wav \
+  --ref-text "You are a helpful assistant.<|endofprompt|>希望你以后能够做的比我还好呦。" \
+  --text "我爱你" --output iloveyou.wav
+# -> 0.96 s of audio, RTF ~3.9
+```
+
+Swap the two arguments and you get 2.8 s of noise instead.
+
+If you do not have the reference transcript, use `--ref-audio` alone — the command then selects the `cross_lingual` mode, which needs no transcript.
 
 ## `mlxgen tts`
 
@@ -104,18 +126,46 @@ mlxgen dub \
 
 The mux is performed with `ffmpeg` (must be on PATH; install with `brew install ffmpeg`). The narration is padded with silence to the video duration and the container is clipped at the video end, so a longer narration never extends the video. The ffmpeg argv builder is unit-tested.
 
+### Dubbing with a designed voice instead of a cloned one
+
+`mlxgen dub` can narrate with a *designed* voice rather than a cloned one — no reference clip, no reference transcript:
+
+```bash
+mlxgen dub \
+  --video-path fox.mp4 \
+  --voice-design "一位沉稳低沉的男性旁白，语速平稳" \
+  --text "清晨，一只红狐在雪地里悄悄走过。" \
+  --output fox_narrated.mp4
+```
+
+That switches the narrator to Qwen3-TTS VoiceDesign, which runs on MLX in the current environment instead of the isolated CosyVoice 3 venv — see [Qwen3-TTS voice design](qwen3-tts-voice-design.md) for the model, the language list and the measured numbers. `--voice-profile <name>` picks a named profile so every clip in a series shares one narrator. CosyVoice 3 remains the default, so existing pipelines keep their voice.
+
 ## Hardware and runtime
 
-The CosyVoice 3 inference runs on CPU — the official code does not move tensors to CUDA explicitly, and the PyTorch + ONNX path is what mlx-gen ships. Measured on an Apple M5 Max (torch 2.7.1, transformers 5.x, CPU):
+The CosyVoice 3 inference runs on CPU — the official code hardcodes CUDA in a few places (mlx-gen patches those out) and the PyTorch + ONNX path is what mlx-gen ships. Measured on an Apple M5 Max (torch 2.7.1, transformers 4.51.3, CPU):
 
-| text length | audio out | wall time | RTF |
+| text | audio out | wall time | RTF |
 |---|---|---|---|
-| 4 chars ("大家好。") | 2.8 s | 5.5 s | 1.95 |
-| ~20 chars | 8.6 s | 15.3 s | 1.78 |
+| "我爱你" (3 chars) | 0.96 s | 3.7 s | 3.9 |
+| "我爱你，今天也要开开心心的。" (14 chars) | 3.28 s | 6.4 s | 1.9 |
+| "你好呀，很高兴认识你。" (11 chars) | 2.76 s | 6.2 s | 2.3 |
 
-Model load is ~2 s once the package is prepared. The on-disk footprint is ~5.4 GB (LLM 2 GB fp32, flow DiT 1.3 GB, speech tokenizer 969 MB, campplus 28 MB, CosyVoice-BlankEN 988 MB); the resident working set is well within a 128 GB Mac's budget. CPU speed varies with system load — we observed RTF between 1.3 and 2.0 across runs.
+Model load is ~2 s once the package is prepared; the first call in a session pays for it, later calls in the same process reuse the loaded model. The on-disk footprint is ~5.4 GB (LLM 2 GB fp32, flow DiT 1.3 GB, speech tokenizer 969 MB, campplus 28 MB, CosyVoice-BlankEN 988 MB); the resident working set is well within a 128 GB Mac's budget. RTF scales with the utterance length — short clips are dominated by the fixed model-load and first-token overhead, longer ones approach 1.3–2.0.
 
-Verified end-to-end on macOS arm64: `mlxgen tts` zero-shot cloning (Chinese), `mlxgen dub` on a 3 s MP4 (video stream-copied, narration padded/clipped to the video length, metadata sidecar written). The upstream code needed eight small patches to run without CUDA (hardcoded `.cuda()` / `'cuda'` device strings and a bf16/fp32 dtype mix in the LLM); `mlxgen prepare --model cosyvoice3` applies them automatically and idempotently — the patch table fails loudly with a refresh hint if the upstream code drifts.
+Verified end-to-end on macOS arm64: `mlxgen tts` zero-shot cloning (Chinese, transcripts cross-checked with Whisper), `mlxgen dub` on a 3 s MP4 (video stream-copied, narration padded/clipped to the video length, metadata sidecar written).
+
+The upstream code needed eight small patches to run without CUDA (hardcoded `.cuda()` / `'cuda'` device strings); `mlxgen prepare --model cosyvoice3` applies them automatically and idempotently — the patch table fails loudly with a refresh hint if the upstream code drifts.
+
+## Dependency versions are pinned on purpose
+
+The worker venv follows the upstream Space's `requirements.txt` closely, because the deviations fail *silently* rather than loudly:
+
+- **`transformers==4.51.3`** — on 5.x the Qwen2 speech-token backbone computes different attention/mask semantics, the LLM emits garbage speech tokens, and `mlxgen tts` still exits 0 with a WAV file full of noise. This is the single most important pin.
+- **`numpy<2`** — `onnxruntime==1.18.0` is compiled against numpy 1.x and fails to import under numpy 2.
+- **`wetext==0.1.8`** — 0.0.4 downloads its FST models from ModelScope while constructing `Normalizer()`, which breaks offline use and read-only home directories. 0.1.x ships them in the wheel.
+- **`diffusers==0.29.0`**, `librosa==0.10.2`, `soundfile==0.12.1`, `onnxruntime==1.18.0`, `conformer==0.3.2`, `setuptools<80` — the versions the upstream Space pins. `setuptools<80` keeps `pkg_resources`, which cosyvoice's dataset processor imports transitively.
+
+The worker also points `MODELSCOPE_HOME`/`MODELSCOPE_CACHE` at `<package>/cache/modelscope` so that any model that does want a ModelScope download lands inside the package instead of the user's home directory.
 
 ## Limitations
 
@@ -123,4 +173,4 @@ Verified end-to-end on macOS arm64: `mlxgen tts` zero-shot cloning (Chinese), `m
 - Synthesis is offline. The venv dependency install and the weight download are the only network steps; after `mlxgen prepare` every call is local.
 - The audio is always the worker's output — `mlxgen dub` does not call MiniMax-H3 itself. Generate the video with `mlxgen generate --model minimax-h3-turbo-544p ...`, then dub it with `mlxgen dub --video-path ...`. Pipeline these with shell `&&` or a small `workflow` script when you want a one-shot "video + voiceover" run.
 - The reference voice is consumed once per call. To reuse the same voice across many calls, point `--ref-audio` at the same file; the worker is single-threaded per call but multiple `mlxgen tts` runs can be parallelized at the shell level.
-- The `matcha` training losses vendored with the official CosyVoice space are stubbed by `mlxgen prepare` when the GitHub-mirrored `third_party/Matcha-TTS/matcha` subtree cannot be fetched (it is training-only code, never called at inference; this just keeps the import graph clean). If the real subtree is present, the prepare step keeps it untouched.
+- The `matcha` package vendored with the official CosyVoice space is fetched from the same HF snapshot. If the `third_party/Matcha-TTS/matcha` subtree cannot be fetched, `mlxgen prepare` writes import stubs for the two names the inference path needs (`matcha.utils.audio.mel_spectrogram`, `matcha.models.components.flow_matching.BASECFM`) plus the training-only loss shims; the real diffusers-based `transformer`/`decoder` modules are still required for the flow DiT to load its state dict.
